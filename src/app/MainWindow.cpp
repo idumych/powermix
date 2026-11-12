@@ -14,11 +14,15 @@
 #include <NodeInfo.h>
 #include <Path.h>
 
+#include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <algorithm>
 
 #include "AudioEngine.h"
 #include "BeatWindow.h"
 #include "Edit.h"
+#include "Importer.h"
 #include "MixerView.h"
 #include "PowerMix.h"
 #include "StatusView.h"
@@ -356,6 +360,100 @@ MainWindow::SaveMix(const char* path)
 	return B_OK;
 }
 
+// TrackView::do_handle_drop: a project opens, a track file becomes a
+// track, any other sound becomes a clip in the lane it was dropped on or a
+// new track named after it
+void
+MainWindow::DropRefs(BMessage* message)
+{
+	int32 lane = -1;
+	float time = 0, x = 0, y = 100;
+	message->FindInt32("lane", &lane);
+	message->FindFloat("time", &time);
+	message->FindFloat("x", &x);
+	message->FindFloat("y", &y);
+	bool committed = false;
+	bool changed = false;
+	entry_ref ref;
+	// refs, or paths as strings (from scripts: hey sends "refs" that way)
+	const char* string;
+	for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK
+			|| (message->FindString("refs", i, &string) == B_OK
+				&& get_ref_for_path(string, &ref) == B_OK); i++) {
+		BEntry entry(&ref, true);
+		BPath path;
+		if (entry.GetPath(&path) != B_OK || entry.IsDirectory())
+			continue;
+		char magic[4] = {0, 0, 0, 0};
+		FILE* file = fopen(path.Path(), "rb");
+		if (file != NULL) {
+			if (fread(magic, 1, 4, file) != 4)
+				magic[0] = 0;
+			fclose(file);
+		}
+		if (memcmp(magic, "MAST", 4) == 0) {
+			OpenProject(path.Path());
+			return;
+		}
+		pmx::Track track;
+		bool isTrack = memcmp(magic, "!TRK", 4) == 0;
+		std::vector<int16> samples;
+		if (isTrack) {
+			std::string error;
+			if (!pmx::ReadTrack(path.Path(), track, &error))
+				continue;
+		} else if (DecodeSound(ref, samples) != B_OK) {
+			BString text;
+			text.SetToFormat(B_TRANSLATE("%s isn't a sound PowerMix can read."), path.Leaf());
+			ShowError(text.String());
+			continue;
+		}
+		if (!fEngine->Lock())
+			continue;
+		if (!committed) {
+			fEditor->Commit();
+			committed = true;
+		}
+		pmx::Project& project = fEngine->Project();
+		if (!isTrack && lane >= 0 && size_t(lane) < project.tracks.size()) {
+			// TrackViewer::HandleDrop: after the boundary nearest the drop
+			pmx::Track& target = project.tracks[size_t(lane)];
+			size_t index = 0;
+			float nearest = 1e10f;
+			for (size_t k = 0; k < target.clips.size(); k++) {
+				if (fabsf(target.clips[k].start - time) <= nearest) {
+					nearest = fabsf(target.clips[k].start - time);
+					index = k;
+				}
+				if (fabsf(target.clips[k].end - time) <= nearest) {
+					nearest = fabsf(target.clips[k].end - time);
+					index = k + 1;
+				}
+			}
+			pmx::InsertClip(target, index, pmx::MakeClip(path.Leaf(), samples));
+		} else {
+			if (!isTrack) {
+				BString name(path.Leaf());
+				int32 dot = name.FindLast('.');
+				if (dot > 0)
+					name.Truncate(dot);
+				track.name = name.String();
+				track.clips.push_back(pmx::MakeClip(path.Leaf(), samples));
+			}
+			track.name = pmx::UniqueTrackName(project, track.name);
+			track.x = x;
+			track.y = y;
+			track.addedByHand = true;
+			project.tracks.push_back(track);
+			x = std::min(250.0f, x + 30);
+		}
+		fEngine->Unlock();
+		changed = true;
+	}
+	if (changed)
+		ProjectStructureChanged(true);
+}
+
 // After tracks were added, deleted or undone: the mixer and both views
 // start again from the project
 void
@@ -584,6 +682,9 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 		case kMsgShowHideBeatMarks:
 			fTrackArea->SetBeatMarks(!fTrackArea->BeatMarks());
+			break;
+		case kMsgDropRefs:
+			DropRefs(message);
 			break;
 		case kMsgClipsChanged:
 			fTrackArea->RedrawLanes();

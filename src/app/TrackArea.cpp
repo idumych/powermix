@@ -643,6 +643,26 @@ public:
 		Invalidate();
 	}
 
+	// TrackView::MessageDropped: files dropped on a lane become clips there
+	virtual void MessageReceived(BMessage* message)
+	{
+		if (message->WasDropped() && message->HasRef("refs")) {
+			BPoint where = ConvertFromScreen(message->DropPoint());
+			BMessage drop(*message);
+			drop.what = kMsgDropRefs;
+			int lane = -1;
+			if (fArea->fEngine->Lock()) {
+				lane = where.x > kClipLeft ? LaneAt(where.y) : -1;
+				fArea->fEngine->Unlock();
+			}
+			drop.AddInt32("lane", lane);
+			drop.AddFloat("time", float(TimeAt(where.x)));
+			Window()->PostMessage(&drop);
+			return;
+		}
+		BView::MessageReceived(message);
+	}
+
 	virtual void MouseUp(BPoint where)
 	{
 		if (fDrag != kNoDrag)

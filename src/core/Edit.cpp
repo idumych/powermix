@@ -227,6 +227,44 @@ Editor::DeleteTracks(const std::set<size_t>& tracks)
 	}
 }
 
+Clip
+MakeClip(const std::string& source, std::vector<int16_t> samples)
+{
+	Clip clip;
+	clip.source = source;
+	clip.samples = std::move(samples);
+	float length = std::max(0.01f, float(clip.samples.size()) / kSampleRate);
+	clip.start = 0;
+	clip.end = length;
+	clip.loopIn = 0;
+	clip.loopOut = length;
+	return clip;
+}
+
+std::vector<int16_t>
+ToClipSamples(const float* interleaved, size_t frames, int channels, double rate)
+{
+	std::vector<float> mono(frames);
+	for (size_t f = 0; f < frames; f++) {
+		float sum = 0;
+		for (int c = 0; c < channels; c++)
+			sum += interleaved[f * size_t(channels) + size_t(c)];
+		mono[f] = channels > 0 ? sum / channels : 0;
+	}
+	size_t outFrames = rate > 0 ? size_t(double(frames) * kSampleRate / rate) : 0;
+	std::vector<int16_t> out(outFrames);
+	for (size_t i = 0; i < outFrames; i++) {
+		double at = double(i) * rate / kSampleRate;
+		size_t k = size_t(at);
+		double f = at - double(k);
+		float a = k < frames ? mono[k] : 0;
+		float b = k + 1 < frames ? mono[k + 1] : a;
+		double v = (a + (b - a) * f) * 32767.0;
+		out[i] = int16_t(std::max(-32768.0, std::min(32767.0, v)));
+	}
+	return out;
+}
+
 std::string
 UniqueTrackName(const Project& project, const std::string& base)
 {

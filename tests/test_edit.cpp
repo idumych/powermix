@@ -76,6 +76,13 @@ int main()
 	editor.Undo();
 	CHECK(p.tracks.size() == 2);
 
+	// import: stereo 22050 Hz -> mono 44100 Hz
+	float stereo[8] = {0.5f, 0.5f, 1, 0, -1, -1, 0, 0};
+	std::vector<int16_t> s = ToClipSamples(stereo, 4, 2, 22050);
+	CHECK(s.size() == 8 && s[0] == 16383 && s[2] == 16383 && s[4] == -32767);
+	Clip made = MakeClip("x.wav", s);
+	CHECK(made.source == "x.wav" && NEAR(made.loopOut, 0.01f));	// at least 0.01 s
+
 	printf(sFailures ? "%d FAILED\n" : "all passed\n", sFailures);
 	return sFailures ? 1 : 0;
 }

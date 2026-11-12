@@ -20,6 +20,7 @@ public:
 	virtual void MouseMoved(BPoint where, uint32 transit, const BMessage* drag);
 	virtual void MouseUp(BPoint where);
 	virtual void KeyDown(const char* bytes, int32 count);
+	virtual void MessageReceived(BMessage* message);
 
 	// Rebuilds the scene from the project (after loading, adding or
 	// deleting tracks). Call with the engine locked.

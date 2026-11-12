@@ -36,6 +36,7 @@ private:
 	status_t SaveMix(const char* path);
 	void ShowError(const char* text);
 	void ProjectStructureChanged(bool keepSelection = false);
+	void DropRefs(BMessage* message);
 
 	AudioEngine* fEngine;
 	BView* fOuter;		// 0x180: the strip and the inner view

@@ -163,3 +163,17 @@ out of the public tree.
   storing a float; TrackObject's start/end/loop fields are doubles. Doing
   (clip start - window start) x 44100 in float placed clips a frame off.
 - The end-of-clip test in GetData is strictly `left < n`.
+
+## Importing sounds
+
+- Dropping files (TrackView::MessageDropped/do_handle_drop): a project
+  opens, a track file adds a track, any other sound becomes a clip in the
+  lane it's dropped on (after the nearest clip boundary) or a new track
+  named after it; on the 3D view, the track stands where it was dropped.
+- The R5 sample WAVs are MS ADPCM with an inconsistent header (blockAlign
+  1024, but 1012 samples per block = 512-byte blocks). Haiku's decoder
+  (beta6) prints "idelta overflow" and returns noise for them; PowerMix
+  reads WAVE itself (src/core/WaveReader). Against 3dmiX's own import of
+  fill_1.wav (in she-loves-it's drums track): correlation 0.99992, BeOS's
+  decoder starting 4 samples later. Not reported anywhere yet (a Renku
+  issue only after reproducing it in MediaPlayer).

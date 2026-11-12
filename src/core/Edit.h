@@ -69,6 +69,14 @@ private:
 	std::vector<Clip> fClipboard;
 };
 
+// A clip of a whole sound, starting at 0, its loop the whole sound
+// (SimpleObject made from a dropped file)
+Clip MakeClip(const std::string& source, std::vector<int16_t> samples);
+// Decoded audio to 3dmiX's format: mono 16-bit at 44.1 kHz. Channels are
+// averaged; other rates are resampled linearly (3dmiX assumed 44.1 kHz).
+std::vector<int16_t> ToClipSamples(const float* interleaved, size_t frames, int channels,
+	double rate);
+
 // "untitled", "untitled 2"... a name no track has yet
 std::string UniqueTrackName(const Project& project, const std::string& base);
 

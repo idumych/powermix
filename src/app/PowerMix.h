@@ -49,7 +49,8 @@ enum {
 	kMsgSaveWavePanel = 'SvWv',
 	kMsgEditClip = 'EdCl',
 	kMsgClipsChanged = 'ClCh',
-	kMsgSetTicks = 'STik'
+	kMsgSetTicks = 'STik',
+	kMsgDropRefs = 'Drop'
 };
 
 #endif

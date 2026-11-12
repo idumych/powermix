@@ -274,6 +274,26 @@ MixerView::SoloSelection()
 		Looper()->PostMessage(kMsgMuteSoloChanged);
 }
 
+// TSoundView::MessageDropped: a dropped file becomes a track where it
+// lands on the floor
+void
+MixerView::MessageReceived(BMessage* message)
+{
+	if (message->WasDropped() && message->HasRef("refs")) {
+		BPoint where = ConvertFromScreen(message->DropPoint());
+		float x = 0, y = 100;
+		fScene.FloorPoint(where.x - FrameOffset(), where.y, x, y);
+		BMessage drop(*message);
+		drop.what = kMsgDropRefs;
+		drop.AddInt32("lane", -1);
+		drop.AddFloat("x", x);
+		drop.AddFloat("y", y);
+		Window()->PostMessage(&drop);
+		return;
+	}
+	BView::MessageReceived(message);
+}
+
 // TSoundView::KeyDown
 void
 MixerView::KeyDown(const char* bytes, int32 count)

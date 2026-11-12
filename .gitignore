@@ -1,0 +1,11 @@
+*.AppImage
+/build/
+.cosmoe/
+/decomp/
+dist/
+/ghidra/
+.haiku-headers/
+*.hpkg
+/obj/
+/PowerMix
+/vm/

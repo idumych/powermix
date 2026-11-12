@@ -47,7 +47,7 @@ public:
 		fBitmap->AddChild(fPen);
 		BuildDots();
 		const char* lines[] = {
-			"PowerMix 0.1",
+			"PowerMix 0.2",
 			B_TRANSLATE("A 3D sound mixer in the spirit of 3dmiX,"),
 			B_TRANSLATE("the mixer that came with BeOS 5."),
 			"",

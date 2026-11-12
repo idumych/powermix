@@ -43,3 +43,23 @@ PASS when: the output has `look modern` and `tracks=6 ` (EVIDENCE_4). Also
 screenshot the window while it is in the modern look (before `quit`): the
 toolbar, the track list with bass selected, the stage with six columns,
 the lanes and the inspector showing bass.
+
+### fades-moves
+Steps: copy the demo to a scratch folder, then
+`PowerMix --do 'open $T/demo.3dmix; fade 0 0 2 3; move 1 0 -250 200; move 1 8 250 200; save $T/demo.3dmix; quit'`
+and `PowerMix --do 'open $T/demo.3dmix; dump; quit'`.
+PASS when: the second run shows kick's fade (`fade0=2.00/3.00`, EVIDENCE_5) and
+hats' two-point path (`path=2`, EVIDENCE_6): both were saved in
+`demo.3dmix.powermix` and read back.
+
+### undo-redo
+Steps: `PowerMix --do 'open $FIX/demo/demo.3dmix; fade 0 0 1 1; fade 2 0 1 1; undo; undo; redo; dump; quit'`.
+PASS when: the output has `redo steps=1` (EVIDENCE_7) after `undo steps=0`,
+and the dump shows kick's fade but not bass's.
+
+### record (not a gate check)
+Linux: with `COSMOE_AUDIO_CAPTURE_FILE=$FIX/click.wav`,
+`PowerMix --do 'open $FIX/demo/demo.3dmix; countin off; arm 1; record 2; dump; quit'`
+must print `record track=1 name=hats clips=2` with a non-zero peak.
+Haiku: the test VM has no audio input; `record 1` must print
+`record failed` (PowerMix shows an alert) and leave the project as it was.

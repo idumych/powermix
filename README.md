@@ -110,8 +110,8 @@ Not (yet) like the original:
 
 | Platform | Package | Tested |
 |---|---|---|
-| Haiku R1/beta6, Renku (x86_64) | `.hpkg` | installed and run in a Haiku R1/beta6 VM: the release's script checks (open, export, import, modern look) and screenshots; no audio device in the VM, so playback was silent |
-| Linux (x86_64, aarch64) | AppImage through [Hokku](https://github.com/idumych/hokku) | x86_64: run under Xvfb (X11) for the release's script checks; both started in CI under X11 and headless Wayland |
+| Haiku R1/beta6, Renku (x86_64) | `.hpkg` | installed and run in a Haiku R1/beta6 VM: the release's script checks (open, export, import, modern look, fades and moves saved and reopened, undo and redo) and screenshots; no audio device in the VM, so playback was silent and recording could only be tried as far as its "no input" alert |
+| Linux (x86_64, aarch64) | AppImage through [Hokku](https://github.com/idumych/hokku) | x86_64: run under Xvfb (X11) for the release's script checks, and recording from a test file through Hokku's capture; both started in CI under X11 and headless Wayland |
 | Haiku arm64 | not released yet | cross-built only; not yet run on Haiku arm64 |
 
 ## Building

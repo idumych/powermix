@@ -41,6 +41,11 @@ void InsertClip(Track& track, size_t index, Clip clip);
 // Returns the take's index in the track.
 size_t PlaceRecording(Track& track, float start, Clip take);
 
+// Latency compensation (as Ardour aligns captures): a take recorded from
+// `start` is heard `shift` seconds late, so it moves that much earlier;
+// what would fall before 0 is dropped.
+void AlignTake(float& start, std::vector<int16_t>& samples, float shift);
+
 // Clips are addressed as (track, clip index)
 typedef std::pair<size_t, size_t> ClipRef;
 typedef std::set<ClipRef> ClipSelection;

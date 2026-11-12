@@ -66,6 +66,8 @@ enum {
 	// recording
 	kMsgRecord = 'Recd',		// Tracks > Record: start or stop a take
 	kMsgToggleArm = 'TgAr',		// "track"; without one, the selected track
+	kMsgLatency = 'Ltcy',		// Misc > Recording latency...
+	kMsgSetLatency = 'SLtc',	// "ms": the extra input delay
 };
 
 #endif

@@ -46,6 +46,7 @@ struct Settings {
 	int32 viewMode = 1;		// modern: 0 stage, 1 split, 2 timeline
 	BRect classicFrame = BRect(30, 30, 730, 430);	// TSoundApplication's
 	BRect modernFrame = BRect(40, 40, 1319, 839);
+	int32 inputLatency = 0;	// ms, added to the measured output delay
 
 	void Load();
 	void Save() const;

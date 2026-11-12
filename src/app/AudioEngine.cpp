@@ -88,6 +88,23 @@ AudioEngine::Start()
 #endif
 }
 
+double
+AudioEngine::OutputDelay() const
+{
+#ifdef POWERMIX_NO_MEDIA_KIT
+	return 0;
+#else
+	if (fPlayer == NULL)
+		return 0;
+	const media_raw_audio_format& format = fPlayer->Format();
+	const size_t frameSize = std::max<size_t>(1, (format.format & 0xf)
+		* std::max<uint32>(1, format.channel_count));
+	const double buffer = format.frame_rate > 0
+		? double(format.buffer_size / frameSize) / format.frame_rate : 0;
+	return fPlayer->Latency() / 1e6 + buffer;
+#endif
+}
+
 void
 AudioEngine::Stop()
 {

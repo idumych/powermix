@@ -102,6 +102,15 @@ int main()
 	CHECK(PlaceRecording(empty, 2, MakeClip(0, 1, 1)) == 0 && NEAR(empty.clips[0].start, 2));
 	CHECK(PlaceRecording(empty, 0, MakeClip(0, 0.5f, 0.5f)) == 0 && NEAR(empty.clips[1].start, 2));
 
+	// latency compensation: earlier by the shift; nothing before 0
+	std::vector<int16_t> takeSamples(44100, 7);
+	float takeStart = 1.0f;
+	AlignTake(takeStart, takeSamples, 0.05f);
+	CHECK(NEAR(takeStart, 0.95f) && takeSamples.size() == 44100);
+	takeStart = 0.02f;
+	AlignTake(takeStart, takeSamples, 0.05f);
+	CHECK(NEAR(takeStart, 0) && takeSamples.size() == 44100 - 1323);	// 0.03 s dropped
+
 	printf(sFailures ? "%d FAILED\n" : "all passed\n", sFailures);
 	return sFailures ? 1 : 0;
 }

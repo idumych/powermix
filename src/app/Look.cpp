@@ -130,6 +130,7 @@ Settings::Load()
 		return;
 	message.FindBool("modern", &modern);
 	message.FindInt32("view", &viewMode);
+	message.FindInt32("input latency", &inputLatency);
 	if (viewMode < 0 || viewMode > 2)
 		viewMode = 1;
 	BRect frame;
@@ -148,6 +149,7 @@ Settings::Save() const
 	BMessage message('PmxS');
 	message.AddBool("modern", modern);
 	message.AddInt32("view", viewMode);
+	message.AddInt32("input latency", inputLatency);
 	message.AddRect("classic frame", classicFrame);
 	message.AddRect("modern frame", modernFrame);
 	BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);

@@ -227,6 +227,17 @@ Editor::DeleteTracks(const std::set<size_t>& tracks)
 	}
 }
 
+void
+AlignTake(float& start, std::vector<int16_t>& samples, float shift)
+{
+	start -= shift;
+	if (start >= 0)
+		return;
+	const size_t drop = std::min(samples.size(), size_t(-start * kSampleRate + 0.5f));
+	samples.erase(samples.begin(), samples.begin() + long(drop));
+	start = 0;
+}
+
 size_t
 PlaceRecording(Track& track, float start, Clip take)
 {

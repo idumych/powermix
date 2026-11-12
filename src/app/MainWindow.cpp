@@ -26,6 +26,7 @@
 #include "EditWindow.h"
 #include "Edit.h"
 #include "Importer.h"
+#include "LatencyWindow.h"
 #include "WaveReader.h"
 #include "MixerView.h"
 #include "ModernViews.h"
@@ -184,6 +185,8 @@ MainWindow::BuildMenus(BRect& menuFrame)
 		new BMessage(kMsgTicksFromSelection)));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Ticks from sample length"),
 		new BMessage(kMsgTicksFromSample)));
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Recording latency" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgLatency)));
 	menu->AddSeparatorItem();
 	menu->AddItem(fPauseItem = new BMenuItem(B_TRANSLATE("Pause"), new BMessage(kMsgPause),
 		'P'));
@@ -382,6 +385,10 @@ MainWindow::StopRecording()
 		SelectionChanged();
 		return;
 	}
+	// latency compensation: the take was heard this much later than mixed
+	float start = fTakeStart;
+	pmx::AlignTake(start, samples, float(fEngine->OutputDelay()
+		+ fSettings.inputLatency / 1000.0));
 	fEditor->Commit();
 	pmx::Project& project = fEngine->Project();
 	size_t track;
@@ -403,7 +410,7 @@ MainWindow::StopRecording()
 			number += c.source.compare(0, 4, "take") == 0;
 	BString source;
 	source.SetToFormat("take %d", number);
-	pmx::PlaceRecording(project.tracks[track], fTakeStart, pmx::MakeClip(source.String(),
+	pmx::PlaceRecording(project.tracks[track], start, pmx::MakeClip(source.String(),
 		std::move(samples)));
 	fEngine->Unlock();
 	ProjectStructureChanged(true);
@@ -938,6 +945,11 @@ MainWindow::RunScript(const char* script)
 					SetViewMode(i);
 			}
 			printf("look %s\n", fModern ? "modern" : "classic");
+		} else if (verb == "latency") {
+			// latency MS: the extra input delay
+			fSettings.inputLatency = atoi(rest.String());
+			printf("latency output=%.1fms extra=%dms\n", fEngine->OutputDelay() * 1000,
+				int(fSettings.inputLatency));
 		} else if (verb == "arm") {
 			SetArmed(atoi(rest.String()));
 			printf("arm %d\n", fRecord.armed);
@@ -1179,6 +1191,17 @@ MainWindow::MessageReceived(BMessage* message)
 			else
 				StartRecording();
 			break;
+		case kMsgLatency:
+			(new LatencyWindow(this, fEngine->OutputDelay(), fSettings.inputLatency,
+				BMessenger(this)))->Show();
+			break;
+		case kMsgSetLatency:
+		{
+			int32 ms;
+			if (message->FindInt32("ms", &ms) == B_OK)
+				fSettings.inputLatency = std::max(int32(0), std::min(int32(2000), ms));
+			break;
+		}
 		case kMsgToggleArm:
 		{
 			// a track's R, or the menu: the (first) selected track

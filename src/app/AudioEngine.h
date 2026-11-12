@@ -35,6 +35,10 @@ public:
 	void StartAbout();
 	void FadeOutAbout();
 
+	// How long after the mix computes a moment you hear it, in seconds: the
+	// output's latency and one buffer (0 without an audio output)
+	double OutputDelay() const;
+
 	// Levels of the last block for the meters, read without the lock
 	float LeftLevel() const { return fLeftLevel; }
 	float RightLevel() const { return fRightLevel; }

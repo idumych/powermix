@@ -140,6 +140,8 @@ MainWindow::BuildMenus(BRect& menuFrame)
 
 	menu = new BMenu(B_TRANSLATE("Edit"));
 	menu->AddItem(fUndoItem = new BMenuItem(B_TRANSLATE("Undo"), new BMessage(kMsgUndo), 'Z'));
+	menu->AddItem(fRedoItem = new BMenuItem(B_TRANSLATE("Redo"), new BMessage(kMsgRedo), 'Z',
+		B_SHIFT_KEY));
 	menu->AddSeparatorItem();
 	menu->AddItem(fClearItem = new BMenuItem(B_TRANSLATE("Clear"), new BMessage(kMsgClear)));
 	menu->AddItem(fCutItem = new BMenuItem(B_TRANSLATE("Cut"), new BMessage(kMsgCut), 'X'));
@@ -209,6 +211,7 @@ MainWindow::MenusBeginning()
 	fSaveWaveItem->SetEnabled(haveProject);
 	fPauseItem->SetMarked(fEngine->IsPaused());
 	fUndoItem->SetEnabled(fEditor->CanUndo());
+	fRedoItem->SetEnabled(fEditor->CanRedo());
 	pmx::ClipSelection clips;
 	size_t a, b;
 	fTrackArea->GetEditTargets(clips, a, b);
@@ -694,6 +697,7 @@ MainWindow::OpenProject(const char* path)
 	if (!fEngine->Lock())
 		return B_ERROR;
 	fEngine->Project() = project;
+	fEditor->Reset();
 	pmx::Mixer& mixer = fEngine->Mixer();
 	mixer.Reset();
 	mixer.SetRange(project.selectionStart, project.selectionEnd);
@@ -945,6 +949,10 @@ MainWindow::RunScript(const char* script)
 					SetViewMode(i);
 			}
 			printf("look %s\n", fModern ? "modern" : "classic");
+		} else if (verb == "undo" || verb == "redo") {
+			BMessage step(verb == "undo" ? kMsgUndo : kMsgRedo);
+			MessageReceived(&step);
+			printf("%s steps=%zu\n", verb.String(), fEditor->UndoSteps());
 		} else if (verb == "latency") {
 			// latency MS: the extra input delay
 			fSettings.inputLatency = atoi(rest.String());
@@ -1244,8 +1252,12 @@ MainWindow::MessageReceived(BMessage* message)
 			fTrackArea->SetFastDisplay(!fTrackArea->FastDisplay());
 			break;
 		case kMsgUndo:
+		case kMsgRedo:
 			if (fEngine->Lock()) {
-				fEditor->Undo();
+				if (message->what == kMsgUndo)
+					fEditor->Undo();
+				else
+					fEditor->Redo();
 				fEngine->Unlock();
 			}
 			ProjectStructureChanged(true);

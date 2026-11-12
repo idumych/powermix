@@ -31,7 +31,8 @@ including the sample mixes that came with BeOS 5.
   its ends to trim it, the red handle below it to set its loop; Ctrl snaps
   to the beat, Shift-resizing resamples the sound to fit and Option-resizing
   stretches it. Clips never overlap: later ones are pushed back. Cut, copy,
-  paste, clear and one level of undo.
+  paste, clear, and undo and redo as far back as 256 MB of history holds
+  (3dmiX had one level).
 - **Sounds** come in by dragging files onto a lane (a clip there) or
   anywhere else (a new track). WAVE files (PCM, and MS ADPCM as the BeOS
   sample sounds use) are read by PowerMix itself; other formats go through

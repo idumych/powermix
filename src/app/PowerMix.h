@@ -22,6 +22,7 @@ enum {
 	kMsgCut = 0x203,
 	kMsgCopy = 0x204,
 	kMsgPaste = 0x205,
+	kMsgRedo = 0x206,		// PowerMix's: 3dmiX had one level of undo
 
 	kMsgShowHideMixer = 0x300,
 	kMsgShowHideControls = 0x301,

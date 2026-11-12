@@ -85,6 +85,7 @@ private:
 	BMenuItem* fPauseItem;
 	BMenuItem* fFastItem;
 	BMenuItem* fUndoItem;
+	BMenuItem* fRedoItem;
 	BMenuItem* fClearItem;
 	BMenuItem* fCutItem;
 	BMenuItem* fCopyItem;

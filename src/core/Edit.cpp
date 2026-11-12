@@ -129,8 +129,7 @@ InsertClip(Track& track, size_t index, Clip clip)
 
 Editor::Editor(Project* project)
 	:
-	fProject(project),
-	fHasUndo(false)
+	fProject(project)
 {
 }
 
@@ -138,17 +137,62 @@ Editor::Editor(Project* project)
 void
 Editor::Commit()
 {
-	fUndoTracks = fProject->tracks;
-	fHasUndo = true;
+	fUndo.push_back(fProject->tracks);
+	fRedo.clear();
+	TrimHistory();
 }
 
-// TrackView::undo: one level; undoing twice redoes
 void
 Editor::Undo()
 {
-	if (!fHasUndo)
+	if (fUndo.empty())
 		return;
-	std::swap(fUndoTracks, fProject->tracks);
+	fRedo.push_back(std::move(fProject->tracks));
+	fProject->tracks = std::move(fUndo.back());
+	fUndo.pop_back();
+}
+
+void
+Editor::Redo()
+{
+	if (fRedo.empty())
+		return;
+	fUndo.push_back(std::move(fProject->tracks));
+	fProject->tracks = std::move(fRedo.back());
+	fRedo.pop_back();
+}
+
+void
+Editor::Reset()
+{
+	fUndo.clear();
+	fRedo.clear();
+}
+
+static size_t
+TracksBytes(const std::vector<Track>& tracks)
+{
+	size_t bytes = 0;
+	for (const Track& track : tracks) {
+		bytes += sizeof(Track);
+		for (const Clip& clip : track.clips)
+			bytes += sizeof(Clip) + clip.samples.size() * sizeof(int16_t);
+	}
+	return bytes;
+}
+
+// The oldest steps go once the history passes kHistoryBytes; the latest
+// one always stays
+void
+Editor::TrimHistory()
+{
+	size_t total = 0;
+	for (const std::vector<Track>& step : fUndo)
+		total += TracksBytes(step);
+	size_t drop = 0;
+	while (total > kHistoryBytes && fUndo.size() - drop > 1)
+		total -= TracksBytes(fUndo[drop++]);
+	fUndo.erase(fUndo.begin(), fUndo.begin() + long(drop));
 }
 
 // TrackView::Copy: up to 1024 selected clips

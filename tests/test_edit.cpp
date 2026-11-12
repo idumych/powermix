@@ -61,7 +61,9 @@ int main()
 	CHECK(NEAR(p.tracks[0].clips[1].start, 2) && NEAR(p.tracks[0].clips[2].start, 4));
 	editor.Undo();
 	CHECK(p.tracks[0].clips.size() == 3);
-	editor.Undo();					// undo twice = redo
+	editor.Undo();					// nothing more to undo (3dmiX's redid)
+	CHECK(p.tracks[0].clips.size() == 3 && !editor.CanUndo());
+	editor.Redo();
 	CHECK(p.tracks[0].clips.size() == 4);
 
 	selection = {{0, 0}, {0, 3}};
@@ -101,6 +103,37 @@ int main()
 	Track empty;
 	CHECK(PlaceRecording(empty, 2, MakeClip(0, 1, 1)) == 0 && NEAR(empty.clips[0].start, 2));
 	CHECK(PlaceRecording(empty, 0, MakeClip(0, 0.5f, 0.5f)) == 0 && NEAR(empty.clips[1].start, 2));
+
+	// undo history: several steps back, and forward again
+	{
+		Project h;
+		Editor history(&h);
+		CHECK(!history.CanUndo() && !history.CanRedo());
+		for (int i = 0; i < 5; i++)
+			history.NewTrack("t");
+		CHECK(h.tracks.size() == 5 && history.UndoSteps() == 5);
+		history.Undo();
+		history.Undo();
+		history.Undo();
+		CHECK(h.tracks.size() == 2 && history.CanRedo());
+		history.Redo();
+		CHECK(h.tracks.size() == 3);
+		history.NewTrack("u");			// a new change ends the redo
+		CHECK(h.tracks.size() == 4 && !history.CanRedo());
+		while (history.CanUndo())
+			history.Undo();
+		CHECK(h.tracks.empty());
+		history.Reset();
+		CHECK(!history.CanRedo());
+		// a long history of big sounds keeps under the limit
+		Track big;
+		big.clips.push_back(MakeClip(0, 1, 1));
+		big.clips[0].samples.assign(20u << 20, 0);	// 40 MB
+		h.tracks.push_back(big);
+		for (int i = 0; i < 12; i++)
+			history.Commit();
+		CHECK(history.UndoSteps() >= 5 && history.UndoSteps() <= 7);
+	}
 
 	// latency compensation: earlier by the shift; nothing before 0
 	std::vector<int16_t> takeSamples(44100, 7);

@@ -3,7 +3,7 @@ name: appimage
 # The app for any x86_64 or aarch64 Linux desktop, built with Hokku (Cosmoe fork) on
 # Ubuntu 24.04 so the AppImage runs on that glibc or newer. One job per architecture, each
 # native (ubuntu-24.04 / ubuntu-24.04-arm), each starting the AppImage it built under X11
-# (Xvfb) and Wayland (headless sway). Run it by hand before a release
+# (Xvfb) and Wayland (headless sway). Run it by hand before each release
 # (gh workflow run appimage.yml --ref <branch>) and test those artifacts; on a v* tag it
 # attaches each AppImage to the release only if that file isn't attached yet, so the tested
 # ones that SHA256SUMS describes are kept.

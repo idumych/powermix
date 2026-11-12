@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <algorithm>
 
@@ -163,6 +164,33 @@ Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 	return wrote;
 }
 
+// A clip's fades over the frames it wrote: a straight rise from silence at
+// its start and fall to silence at its end. Past the end (3dmiX's quirk can
+// play up to a buffer more) a faded clip is silent.
+static void
+ApplyFades(const Clip& clip, int16_t* out, int32_t count, int32_t at)
+{
+	const double length = std::max(0.0, double(clip.end) - clip.start);
+	const double in = std::min<double>(clip.fadeIn, length);
+	const double outLength = std::min<double>(clip.fadeOut, length - in);
+	for (int32_t i = 0; i < count; i++) {
+		const double t = double(at + i) / kSampleRate;
+		if (t < clip.start)
+			continue;
+		double gain = 1;
+		if (t > clip.end)
+			gain = clip.fadeOut > 0 ? 0 : 1;
+		else {
+			if (in > 0 && t < clip.start + in)
+				gain = (t - clip.start) / in;
+			if (outLength > 0 && t > clip.end - outLength)
+				gain = std::min(gain, (clip.end - t) / outLength);
+		}
+		if (gain < 1)
+			out[i] = int16_t(std::lround(out[i] * std::max(0.0, gain)));
+	}
+}
+
 bool
 Track::Fill(int16_t* out, int32_t count, int32_t at) const
 {
@@ -178,6 +206,8 @@ Track::Fill(int16_t* out, int32_t count, int32_t at) const
 			played |= clip.GetData(out, -delay, count);
 		else if (delay < count)
 			played |= clip.GetData(out + delay, 0, count - delay);
+		if (clip.fadeIn > 0 || clip.fadeOut > 0)
+			ApplyFades(clip, out, count, at);
 	}
 	return played;
 }
@@ -332,6 +362,7 @@ ReadProject(const std::string& path, Project& project, std::string* error,
 	char text[33] = {};
 	if (file.Read(text, 32))
 		project.ticksText = text;
+	ReadExtras(path + ".powermix", project);
 	return true;
 }
 
@@ -371,7 +402,82 @@ WriteProject(const std::string& folder, const std::string& fileName,
 		SetError(error, "Couldn't write " + path);
 		return false;
 	}
+	if (!WriteExtras(path + ".powermix", project)) {
+		SetError(error, "Couldn't write " + path + ".powermix");
+		return false;
+	}
 	return true;
+}
+
+// <project>.powermix: see Project.h
+bool
+ReadExtras(const std::string& path, Project& project)
+{
+	FILE* file = fopen(path.c_str(), "r");
+	if (file == NULL)
+		return false;
+	char line[4096];
+	if (fgets(line, sizeof(line), file) == NULL || strncmp(line, "PowerMix 1", 10) != 0) {
+		fclose(file);
+		return false;
+	}
+	while (fgets(line, sizeof(line), file) != NULL) {
+		line[strcspn(line, "\r\n")] = '\0';
+		std::vector<std::string> fields;
+		for (char* field = line; ; ) {
+			char* tab = strchr(field, '\t');
+			if (tab != NULL)
+				*tab = '\0';
+			fields.push_back(field);
+			if (tab == NULL)
+				break;
+			field = tab + 1;
+		}
+		Track* track = NULL;
+		if (fields.size() >= 2) {
+			for (Track& t : project.tracks) {
+				if (t.name == fields[1])
+					track = &t;
+			}
+		}
+		if (track == NULL)
+			continue;
+		if (fields[0] == "fade" && fields.size() >= 5) {
+			size_t index = size_t(atol(fields[2].c_str()));
+			if (index < track->clips.size()) {
+				track->clips[index].fadeIn = std::max(0.0f, float(atof(fields[3].c_str())));
+				track->clips[index].fadeOut = std::max(0.0f, float(atof(fields[4].c_str())));
+			}
+		}
+	}
+	fclose(file);
+	return true;
+}
+
+bool
+WriteExtras(const std::string& path, const Project& project)
+{
+	std::string text;
+	char line[256];
+	for (const Track& track : project.tracks) {
+		for (size_t k = 0; k < track.clips.size(); k++) {
+			const Clip& clip = track.clips[k];
+			if (clip.fadeIn <= 0 && clip.fadeOut <= 0)
+				continue;
+			snprintf(line, sizeof(line), "\t%zu\t%.6f\t%.6f\n", k, clip.fadeIn, clip.fadeOut);
+			text += "fade\t" + track.name + line;
+		}
+	}
+	// nothing 3dmiX can't hold: no file (an old one would be stale)
+	if (text.empty()) {
+		remove(path.c_str());
+		return true;
+	}
+	FILE* file = fopen(path.c_str(), "w");
+	if (file == NULL)
+		return false;
+	bool ok = fputs("PowerMix 1\n", file) >= 0 && fputs(text.c_str(), file) >= 0;
+	return fclose(file) == 0 && ok;
 }
 
 }	// namespace pmx

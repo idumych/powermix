@@ -512,6 +512,8 @@ public:
 		StrokeLine(BPoint(right, top), BPoint(right, bottom));
 		StrokeLine(BPoint(right - 1, top), BPoint(right - 1, bottom));
 
+		DrawFades(c, left + 2, right - 2, top + 2, bottom - 2);
+
 		// the loop's end and its handle
 		float loopEnd = X(c.start + loopLength);
 		if (loopLength > 0 && loopEnd < right) {
@@ -535,6 +537,38 @@ public:
 			DrawString(name.String(), BPoint((left + right - font.StringWidth(name.String())) / 2,
 				bottom - 4));
 			SetDrawingMode(B_OP_COPY);
+		}
+	}
+
+	// The fades: a shaded corner over each end with a line from silence up
+	// to full, and a small square handle at the top to drag
+	void DrawFades(const pmx::Clip& c, float left, float right, float top, float bottom)
+	{
+		const float spp = fArea->fSecondsPerPixel;
+		const float in = std::min(right - left, c.fadeIn / spp);
+		const float out = std::min(right - left - in, c.fadeOut / spp);
+		const bool modern = look::IsModern();
+		SetDrawingMode(B_OP_ALPHA);
+		SetBlendingMode(B_CONSTANT_ALPHA, B_ALPHA_OVERLAY);
+		const rgb_color shade = modern ? rgb_color{8, 10, 16, 150} : rgb_color{0, 0, 0, 70};
+		const rgb_color line = modern ? rgb_color{230, 233, 239, 200} : rgb_color{40, 40, 40, 230};
+		if (in >= 1) {
+			SetHighColor(shade);
+			FillTriangle(BPoint(left, top), BPoint(left + in, top), BPoint(left, bottom));
+			SetHighColor(line);
+			StrokeLine(BPoint(left, bottom), BPoint(left + in, top));
+		}
+		if (out >= 1) {
+			SetHighColor(shade);
+			FillTriangle(BPoint(right - out, top), BPoint(right, top), BPoint(right, bottom));
+			SetHighColor(line);
+			StrokeLine(BPoint(right - out, top), BPoint(right, bottom));
+		}
+		SetDrawingMode(B_OP_COPY);
+		if (right - left > 20) {
+			SetHighColor(modern ? look::kText : rgb_color{40, 40, 40, 255});
+			FillRect(BRect(left + in - 2, top, left + in + 2, top + 4));
+			FillRect(BRect(right - out - 2, top, right - out + 2, top + 4));
 		}
 	}
 
@@ -581,6 +615,8 @@ public:
 			StrokeLine(BPoint(x, mid - extent), BPoint(x, mid + extent));
 			t += spp;
 		}
+
+		DrawFades(c, left, right, top + 1, bottom - 1);
 
 		// the loop's end, dashed, and its handle below
 		float loopEnd = X(c.start + loopLength);
@@ -761,7 +797,17 @@ public:
 				float left = (clip.start - fArea->fViewStart) / fArea->fSecondsPerPixel;
 				float right = (clip.end - fArea->fViewStart) / fArea->fSecondsPerPixel;
 				float x = where.x - kClipLeft - 1;
-				if (where.y > LaneTop(size_t(lane)) + kLaneHeight - 8)
+				// the fade handles along the top
+				const float fadeInX = left + std::min(right - left, clip.fadeIn
+					/ fArea->fSecondsPerPixel);
+				const float fadeOutX = right - std::min(right - left, clip.fadeOut
+					/ fArea->fSecondsPerPixel);
+				const bool topEdge = where.y < LaneTop(size_t(lane)) + 16;
+				if (topEdge && right - left > 20 && fabsf(x - fadeInX) < 7)
+					fDrag = kFadeIn;
+				else if (topEdge && right - left > 20 && fabsf(x - fadeOutX) < 7)
+					fDrag = kFadeOut;
+				else if (where.y > LaneTop(size_t(lane)) + kLaneHeight - 8)
 					fDrag = kLoopHandle;		// TrackViewer::ChangeGizmos
 				else if (right - left > 16 && x - left < 8)
 					fDrag = kTrimStart;
@@ -819,6 +865,12 @@ public:
 				}
 				case kLoopHandle:
 					pmx::SetClipLoop(clip, float(TimeAt(where.x)) - clip.start, grid);
+					break;
+				case kFadeIn:
+					pmx::SetClipFades(clip, fOriginal.fadeIn + dt, fOriginal.fadeOut);
+					break;
+				case kFadeOut:
+					pmx::SetClipFades(clip, fOriginal.fadeIn, fOriginal.fadeOut - dt);
 					break;
 				default:
 					break;
@@ -881,7 +933,8 @@ public:
 	size_t fPasteAfter = 0;
 
 private:
-	enum { kNoDrag, kMove, kTrimStart, kTrimEnd, kLoopHandle } fDrag = kNoDrag;
+	enum { kNoDrag, kMove, kTrimStart, kTrimEnd, kLoopHandle, kFadeIn, kFadeOut }
+		fDrag = kNoDrag;
 	pmx::ClipRef fDragClip;
 	pmx::ClipRef fLastClip = pmx::ClipRef(size_t(-1), 0);
 	bigtime_t fLastClick = 0;

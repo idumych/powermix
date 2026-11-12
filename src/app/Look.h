@@ -47,6 +47,8 @@ struct Settings {
 	BRect classicFrame = BRect(30, 30, 730, 430);	// TSoundApplication's
 	BRect modernFrame = BRect(40, 40, 1319, 839);
 	int32 inputLatency = 0;	// ms, added to the measured output delay
+	bool click = true;		// Tracks > Click while recording
+	bool countIn = true;	// Tracks > Count-in before recording
 
 	void Load();
 	void Save() const;

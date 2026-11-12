@@ -115,6 +115,9 @@ private:
 	double fLastTime;			// the mix's time at the last frame
 	BMenuItem* fRecordItem;
 	BMenuItem* fArmItem;
+	BMenuItem* fClickItem;
+	BMenuItem* fCountInItem;
+	float fCountInSeconds;		// of the take being recorded
 	BRect fClassicTrackFrame;	// the track area's frame in the classic layout
 	float fClassicZoom;
 	float fClassicViewStart;

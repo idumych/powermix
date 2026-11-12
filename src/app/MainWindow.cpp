@@ -66,6 +66,9 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 	fLastTime(0),
 	fRecordItem(NULL),
 	fArmItem(NULL),
+	fClickItem(NULL),
+	fCountInItem(NULL),
+	fCountInSeconds(0),
 	fClassicZoom(1.0f / 14),
 	fClassicViewStart(0)
 {
@@ -180,6 +183,10 @@ MainWindow::BuildMenus(BRect& menuFrame)
 		new BMessage(kMsgToggleArm)));
 	menu->AddItem(fRecordItem = new BMenuItem(B_TRANSLATE("Record"), new BMessage(kMsgRecord),
 		'R'));
+	menu->AddItem(fClickItem = new BMenuItem(B_TRANSLATE("Click while recording"),
+		new BMessage(kMsgClick)));
+	menu->AddItem(fCountInItem = new BMenuItem(B_TRANSLATE("Count-in before recording"),
+		new BMessage(kMsgCountIn)));
 	bar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Misc"));
@@ -232,6 +239,8 @@ MainWindow::MenusBeginning()
 		}
 	}
 	fArmItem->SetEnabled(anySelected && !fRecord.recording);
+	fClickItem->SetMarked(fSettings.click);
+	fCountInItem->SetMarked(fSettings.countIn);
 	fArmItem->SetMarked(armedSelected);
 	fControlsItem->SetEnabled(!fModern);
 }
@@ -364,9 +373,24 @@ MainWindow::StartRecording()
 		ShowError(text.String());
 		return;
 	}
-	// you hear the mix while you record
+	// you hear the mix while you record, with the click on the ruler's
+	// beats; a count-in holds the mix for a bar of clicks first
 	if (fEngine->IsPaused())
 		fEngine->SetPaused(false);
+	float ticks = 0;
+	int beats = 4;
+	if (fEngine->Lock()) {
+		ticks = fEngine->Project().ticks;
+		beats = std::max<int>(1, fEngine->Project().beatsPerBar);
+		fEngine->Unlock();
+	}
+	const double beat = ticks > 0 ? 120.0 / ticks : 0.5;
+	fEngine->SetClick(fSettings.click, beat, beats);
+	fCountInSeconds = 0;
+	if (fSettings.countIn) {
+		fEngine->StartCountIn(beats);
+		fCountInSeconds = float(beats * (beat > 0.05 ? beat : 0.5));
+	}
 	fTakeStart = start;
 	fLastTime = start;
 	fRecord.recording = true;
@@ -380,7 +404,12 @@ MainWindow::StopRecording()
 	if (!fRecord.recording)
 		return;
 	std::vector<int16> samples = fRecorder.Stop();
+	fEngine->SetClick(false, 0, 1);
+	// what was recorded during the count-in isn't part of the take
+	const size_t countIn = std::min(samples.size(), size_t(fCountInSeconds * pmx::kSampleRate));
+	samples.erase(samples.begin(), samples.begin() + long(countIn));
 	fRecord.recording = false;
+	fRecord.countingIn = false;
 	fRecord.level = 0;
 	fTrackArea->ClearRecording();
 	SyncModernControls();
@@ -671,12 +700,14 @@ MainWindow::Animate()
 				track = int(fEngine->Project().tracks.size());
 				fEngine->Unlock();
 			}
-			fTrackArea->SetRecording(track, fTakeStart, fTakeStart + fRecorder.Seconds());
+			fRecord.countingIn = fEngine->CountingIn();
+			fTrackArea->SetRecording(track, fTakeStart, fTakeStart
+				+ std::max(0.0, fRecorder.Seconds() - fCountInSeconds));
 		}
 	}
 	fLastTime = time;
 	if (fModern) {
-		fToolbar->SetRecording(fRecord.recording, fRecord.level);
+		fToolbar->SetRecording(fRecord.recording, fRecord.countingIn, fRecord.level);
 		fToolbar->SetTime(time, length);
 		fToolbar->SetLevels(fEngine->LeftLevel(), fEngine->RightLevel());
 		fTrackList->Invalidate();
@@ -934,9 +965,15 @@ MainWindow::RunScript(const char* script)
 				const pmx::Project& project = fEngine->Project();
 				printf("tracks=%zu length=%.2f\n", project.tracks.size(), project.Length());
 				for (size_t i = 0; i < project.tracks.size(); i++) {
-					printf("track %zu name=%s clips=%zu x=%.1f y=%.1f\n", i,
+					BString fades;
+					for (size_t k = 0; k < project.tracks[i].clips.size(); k++) {
+						const pmx::Clip& c = project.tracks[i].clips[k];
+						if (c.fadeIn > 0 || c.fadeOut > 0)
+							fades << " fade" << int32(k) << "=" << c.fadeIn << "/" << c.fadeOut;
+					}
+					printf("track %zu name=%s clips=%zu x=%.1f y=%.1f%s\n", i,
 						project.tracks[i].name.c_str(), project.tracks[i].clips.size(),
-						project.tracks[i].x, project.tracks[i].y);
+						project.tracks[i].x, project.tracks[i].y, fades.String());
 				}
 				fEngine->Unlock();
 			}
@@ -953,6 +990,34 @@ MainWindow::RunScript(const char* script)
 			BMessage step(verb == "undo" ? kMsgUndo : kMsgRedo);
 			MessageReceived(&step);
 			printf("%s steps=%zu\n", verb.String(), fEditor->UndoSteps());
+		} else if (verb == "click" || verb == "countin") {
+			// click on|off, countin on|off
+			(verb == "click" ? fSettings.click : fSettings.countIn) = rest == "on";
+			printf("%s %s\n", verb.String(), rest == "on" ? "on" : "off");
+		} else if (verb == "fade") {
+			// fade TRACK CLIP IN OUT
+			int track = 0, clip = 0;
+			float in = 0, out = 0;
+			sscanf(rest.String(), "%d %d %f %f", &track, &clip, &in, &out);
+			if (fEngine->Lock()) {
+				pmx::Project& project = fEngine->Project();
+				if (size_t(track) < project.tracks.size()
+					&& size_t(clip) < project.tracks[track].clips.size()) {
+					fEditor->Commit();
+					pmx::Clip& c = project.tracks[track].clips[clip];
+					pmx::SetClipFades(c, in, out);
+					printf("fade track=%d clip=%d in=%.2f out=%.2f\n", track, clip, c.fadeIn,
+						c.fadeOut);
+				} else
+					printf("fade failed\n");
+				fEngine->Unlock();
+			}
+		} else if (verb == "save") {
+			// save PATH: the project there, as File > Save project as does
+			BPath path(rest.String());
+			BPath folder;
+			path.GetParent(&folder);
+			printf("save %s\n", SaveProject(folder.Path(), path.Leaf()) == B_OK ? "ok" : "failed");
 		} else if (verb == "latency") {
 			// latency MS: the extra input delay
 			fSettings.inputLatency = atoi(rest.String());
@@ -1198,6 +1263,12 @@ MainWindow::MessageReceived(BMessage* message)
 				StopRecording();
 			else
 				StartRecording();
+			break;
+		case kMsgClick:
+			fSettings.click = !fSettings.click;
+			break;
+		case kMsgCountIn:
+			fSettings.countIn = !fSettings.countIn;
 			break;
 		case kMsgLatency:
 			(new LatencyWindow(this, fEngine->OutputDelay(), fSettings.inputLatency,

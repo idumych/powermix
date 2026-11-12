@@ -586,7 +586,8 @@ ToolbarView::ToolbarView(BRect frame)
 	fLength(0),
 	fLeft(0),
 	fRight(0),
-	fRecording(false)
+	fRecording(false),
+	fCountingIn(false)
 {
 	fStart = new ModernButton(BRect(0, 11, 33, 44), "start", "", new BMessage(kMsgSeekStart),
 		ModernButton::kIconStart);
@@ -730,7 +731,7 @@ ToolbarView::DrawContent(BView* v, BRect b)
 	// the time, red while recording
 	UseFont(v, be_fixed_font, 15);
 	v->SetHighColor(fRecording ? rgb_color{255, 107, 107, 255} : kText);
-	BString now = TimeText(fTime);
+	BString now = fCountingIn ? BString(B_TRANSLATE("count-in")) : TimeText(fTime);
 	v->DrawString(now.String(), BPoint(TimeLeft(), 33));
 	float after = TimeLeft() + v->StringWidth(now.String()) + 6;
 	if (!Narrow()) {
@@ -865,11 +866,12 @@ ToolbarView::SetBeats(int beats)
 }
 
 void
-ToolbarView::SetRecording(bool recording, float level)
+ToolbarView::SetRecording(bool recording, bool countingIn, float level)
 {
 	fRecord->SetValue(recording ? B_CONTROL_ON : B_CONTROL_OFF);
-	if (recording != fRecording) {
+	if (recording != fRecording || countingIn != fCountingIn) {
 		fRecording = recording;
+		fCountingIn = countingIn;
 		Invalidate(BRect(TimeLeft() - 4, 10, TicksLeft() - 40, 46));
 	}
 }

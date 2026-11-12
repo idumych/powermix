@@ -69,6 +69,8 @@ enum {
 	kMsgToggleArm = 'TgAr',		// "track"; without one, the selected track
 	kMsgLatency = 'Ltcy',		// Misc > Recording latency...
 	kMsgSetLatency = 'SLtc',	// "ms": the extra input delay
+	kMsgClick = 'Clik',			// Tracks > Click while recording
+	kMsgCountIn = 'Cnti',		// Tracks > Count-in before recording
 };
 
 #endif

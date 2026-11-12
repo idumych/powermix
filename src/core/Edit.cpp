@@ -71,6 +71,9 @@ SetClipLength(Clip& clip, float length, float grid)
 		length = 0;
 	clip.end = ToGrid(clip.start + length, grid);
 	Normalize(clip);
+	// fades stay inside a shorter clip
+	if (clip.fadeIn > 0 || clip.fadeOut > 0)
+		SetClipFades(clip, clip.fadeIn, clip.fadeOut);
 }
 
 // TrackObject::SetStartSkip: where in the sound the clip starts playing
@@ -280,6 +283,14 @@ AlignTake(float& start, std::vector<int16_t>& samples, float shift)
 	const size_t drop = std::min(samples.size(), size_t(-start * kSampleRate + 0.5f));
 	samples.erase(samples.begin(), samples.begin() + long(drop));
 	start = 0;
+}
+
+void
+SetClipFades(Clip& clip, float in, float out)
+{
+	const float length = ClipLength(clip);
+	clip.fadeIn = std::max(0.0f, std::min(in, length));
+	clip.fadeOut = std::max(0.0f, std::min(out, length - clip.fadeIn));
 }
 
 size_t

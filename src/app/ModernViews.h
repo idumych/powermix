@@ -17,6 +17,7 @@ class MixerView;
 struct RecordState {
 	int armed = -1;			// the track a take goes into; -1: a new track
 	bool recording = false;
+	bool countingIn = false;	// the bar of clicks before the take
 	float level = 0;		// the input's peak, 0..1
 };
 
@@ -98,7 +99,7 @@ public:
 	void SetTicks(float ticks);
 	void SetBeats(int beats);
 	void SetMaster(float value);
-	void SetRecording(bool recording, float level);
+	void SetRecording(bool recording, bool countingIn, float level);
 
 protected:
 	virtual void DrawContent(BView* into, BRect bounds);
@@ -123,6 +124,7 @@ private:
 	float fLeft, fRight;
 	BRect fMeter;
 	bool fRecording;
+	bool fCountingIn;
 };
 
 // The tracks down the left: colour, name, gain, level, mute and solo

@@ -4,6 +4,8 @@
 #include "Project.h"
 
 #include <cstdio>
+#include <cstdlib>
+#include <unistd.h>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -47,6 +49,50 @@ static void TestClipLoop()
 	CHECK(!track.Fill(buffer, 8, 3 * kSampleRate));
 }
 
+// PowerMix's fades: a rise and a fall over the clip's ends, saved in
+// <project>.powermix and read back; a project without them writes none
+static void TestFades()
+{
+	Clip clip;
+	clip.start = 0;
+	clip.end = 1;
+	clip.loopIn = 0;
+	clip.loopOut = 1;
+	clip.samples.assign(kSampleRate, 10000);
+	clip.fadeIn = 0.5f;
+	clip.fadeOut = 0.25f;
+	Track track;
+	track.name = "faded";
+	track.clips.push_back(clip);
+	int16_t out[1];
+	track.Fill(out, 1, 0);
+	CHECK(out[0] == 0);						// silent at the start
+	track.Fill(out, 1, kSampleRate / 4);
+	CHECK(out[0] == 5000);					// half way up
+	track.Fill(out, 1, kSampleRate / 2 + 10);
+	CHECK(out[0] == 10000);					// full between the fades
+	track.Fill(out, 1, kSampleRate * 7 / 8);
+	CHECK(out[0] == 5000);					// half way down
+
+	char dir[] = "/tmp/pmx-fades-XXXXXX";
+	CHECK(mkdtemp(dir) != NULL);
+	Project project;
+	project.tracks.push_back(track);
+	std::string error;
+	CHECK(WriteProject(dir, "f.3dmix", project, &error));
+	Project back;
+	CHECK(ReadProject(std::string(dir) + "/f.3dmix", back, &error, nullptr));
+	CHECK(back.tracks.size() == 1 && back.tracks[0].clips.size() == 1);
+	CHECK(back.tracks[0].clips[0].fadeIn == 0.5f && back.tracks[0].clips[0].fadeOut == 0.25f);
+	// without fades the extras file goes away
+	project.tracks[0].clips[0].fadeIn = project.tracks[0].clips[0].fadeOut = 0;
+	CHECK(WriteProject(dir, "f.3dmix", project, &error));
+	CHECK(fopen((std::string(dir) + "/f.3dmix.powermix").c_str(), "r") == NULL);
+	remove((std::string(dir) + "/f.3dmix").c_str());
+	remove((std::string(dir) + "/faded").c_str());
+	rmdir(dir);
+}
+
 static void TestMix(const std::string& dir, const char* name, size_t tracks)
 {
 	std::string folder = dir + "/" + name + "/" + name + "-3dmix";
@@ -83,6 +129,7 @@ static void TestMix(const std::string& dir, const char* name, size_t tracks)
 int main(int argc, char** argv)
 {
 	TestClipLoop();
+	TestFades();
 	std::string dir = argc > 1 ? argv[1] : "vm/orig/boot/optional/sound/3D Mixes";
 	TestMix(dir, "the-lynx", 14);
 	TestMix(dir, "she-loves-it", 12);

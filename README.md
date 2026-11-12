@@ -30,7 +30,8 @@ including the sample mixes that came with BeOS 5.
 - **Tracks** hold clips that loop part of a sound. Drag a clip to move it,
   its ends to trim it, the red handle below it to set its loop; Ctrl snaps
   to the beat, Shift-resizing resamples the sound to fit and Option-resizing
-  stretches it. Clips never overlap: later ones are pushed back. Cut, copy,
+  stretches it. The small squares along a clip's top are its fades: drag
+  them in to fade it in from and out to silence. Clips never overlap: later ones are pushed back. Cut, copy,
   paste, clear, and undo and redo as far back as 256 MB of history holds
   (3dmiX had one level).
 - **Sounds** come in by dragging files onto a lane (a clip there) or
@@ -44,12 +45,16 @@ including the sample mixes that came with BeOS 5.
   track where you started. A clip playing at that moment ends there, clips
   the take reaches are pushed back, and Undo removes it. With no track
   armed the take gets a track of its own. It stops by itself where the loop
-  starts over. Not on Haiku arm64, which has no Media Kit yet.
+  starts over. A click sounds on the ruler's beats while you record, after
+  a one-bar count-in (both can be turned off in the Tracks menu), and
+  Misc ▸ Recording latency… lines takes up with what you heard. Not on Haiku arm64, which has no Media Kit yet.
 - **The sound editor** (double-click a clip): select, cut, copy, paste, and
   the filters Zero, Change volume, Max volume, Echo, Chorus, Metal, Fade and
   Compress, done as 3dmiX did them.
 
   ![The sound editor on Linux](docs/screenshots/linux-editor.png)
+- **What 3dmiX's files can't hold** (fades) is saved beside the project in
+  `<project>.powermix`, so 3dmiX still opens the project without it.
 - **The time ruler** sets the part that loops (and is saved by File ▸ Save
   mix as WAVE); Ticks and the 3/4…7/4 menu set the beat grid, and Misc ▸
   Ticks from… works it out from the selection or a clip.

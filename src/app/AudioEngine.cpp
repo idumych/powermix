@@ -7,6 +7,8 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 AudioEngine::AudioEngine()
@@ -20,14 +22,27 @@ AudioEngine::AudioEngine()
 	fPaused(false),
 	fAbout(NULL),
 	fLeftLevel(0),
-	fRightLevel(0)
+	fRightLevel(0),
+	fClickOn(false),
+	fBeat(0.5),
+	fBeatsPerBar(4),
+	fCountIn(0),
+	fCountInTotal(0),
+	fClickAt(-1),
+	fClickPitch(1000),
+	fDump(NULL)
 {
+	// for tests: everything played, raw 16-bit stereo at 44.1 kHz
+	if (const char* dump = getenv("POWERMIX_DUMP_OUTPUT"))
+		fDump = fopen(dump, "wb");
 }
 
 AudioEngine::~AudioEngine()
 {
 	Stop();
 	delete fAbout;
+	if (fDump != NULL)
+		fclose(fDump);
 }
 
 void
@@ -86,6 +101,60 @@ AudioEngine::Start()
 	fPlayer->SetHasData(true);
 	return B_OK;
 #endif
+}
+
+void
+AudioEngine::SetClick(bool on, double beatSeconds, int beatsPerBar)
+{
+	if (!Lock())
+		return;
+	fClickOn = on;
+	fBeat = beatSeconds > 0.05 ? beatSeconds : 0.5;
+	fBeatsPerBar = std::max(1, beatsPerBar);
+	if (!on && fCountIn == 0)
+		fClickAt = -1;
+	Unlock();
+}
+
+void
+AudioEngine::StartCountIn(int beats)
+{
+	if (!Lock())
+		return;
+	fCountInTotal = int32(beats * fBeat * pmx::kSampleRate);
+	fCountIn = fCountInTotal;
+	Unlock();
+}
+
+// A tick starts on every beat that falls in this block, which begins `from`
+// seconds into the mix (or into the count-in); the sounding tick goes on
+void
+AudioEngine::AddClicks(double from, bool countIn)
+{
+	const double frame = 1.0 / pmx::kSampleRate;
+	const int32 tickFrames = pmx::kSampleRate / 30;	// 33 ms
+	for (int32 i = 0; i < pmx::kBlockFrames; i++) {
+		const double t = from + i * frame;
+		const double beat = t / fBeat;
+		const long index = long(floor(beat + 1e-9));
+		// this frame is the first one at or after a beat
+		if (beat - index < frame / fBeat - 1e-12) {
+			fClickAt = 0;
+			fClickPitch = index % fBeatsPerBar == 0 ? 1600 : 1000;
+		}
+		if (fClickAt < 0)
+			continue;
+		const float envelope = expf(-fClickAt / 200.0f);
+		const float v = 9000 * envelope
+			* sinf(2 * 3.1415926f * fClickPitch * fClickAt / pmx::kSampleRate);
+		for (int ch = 0; ch < 2; ch++) {
+			int32 sum = fBlock[2 * i + ch] + int32(v);
+			fBlock[2 * i + ch] = int16(std::max(-32768, std::min(32767, int(sum))));
+		}
+		if (++fClickAt >= tickFrames)
+			fClickAt = -1;
+	}
+	(void)countIn;
 }
 
 double
@@ -157,12 +226,24 @@ AudioEngine::Fill(int16* out, size_t frames)
 					fAbout = NULL;
 				}
 				fLock.Unlock();
+			} else if (fCountIn > 0) {
+				// counting in: clicks only, the mix waits
+				memset(fBlock, 0, sizeof(fBlock));
+				AddClicks(double(fCountInTotal - fCountIn) / pmx::kSampleRate, true);
+				fCountIn = std::max(int32(0), fCountIn - int32(pmx::kBlockFrames));
+				fLeftLevel = fRightLevel = 0;
+				fLock.Unlock();
 			} else {
+				const double from = fMixer.Time();
 				fMixer.NextBlock(fBlock);
 				fLeftLevel = fMixer.LeftLevel();
 				fRightLevel = fMixer.RightLevel();
+				if (fClickOn)
+					AddClicks(from, false);
 				fLock.Unlock();
 			}
+			if (fDump != NULL)
+				fwrite(fBlock, sizeof(fBlock), 1, fDump);
 			fBlockUsed = 0;
 		}
 		size_t n = std::min<size_t>(frames, pmx::kBlockFrames - fBlockUsed);

@@ -25,6 +25,8 @@ void SetClipLength(Clip& clip, float length, float grid);
 void SetClipSkip(Clip& clip, float skip);
 void SetClipLoop(Clip& clip, float loop, float grid);
 float ClipLength(const Clip& clip);
+// The fades, kept within the clip (in + out at most its length)
+void SetClipFades(Clip& clip, float in, float out);
 float ClipLoop(const Clip& clip);
 float SoundLength(const Clip& clip);	// SampleCache::Length
 

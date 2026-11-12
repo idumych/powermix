@@ -17,6 +17,11 @@
 //
 // The track paths stored in a project are absolute and usually stale; 3dmiX
 // opens the file of the same name in the project's own folder (mangle()).
+//
+// What 3dmiX's formats have no room for (PowerMix's clip fades) goes in
+// "<project>.powermix" beside the project, which 3dmiX never reads: text,
+// a "PowerMix 1" line, then one tab-separated line per item:
+//   fade  <track name>  <clip index>  <fade in>  <fade out>   (seconds)
 #ifndef POWERMIX_PROJECT_H
 #define POWERMIX_PROJECT_H
 
@@ -35,6 +40,9 @@ struct Clip {
 	std::string source;		// name of the sound it came from ("fill_1.wav")
 	float start = 0, end = 0;
 	float loopIn = 0, loopOut = 0;
+	// PowerMix's fades (Ardour's region fades): seconds from each end over
+	// which the clip rises from or falls to silence; 0 plays it as 3dmiX did
+	float fadeIn = 0, fadeOut = 0;
 	std::vector<int16_t> samples;
 
 	// SimpleObject::GetData: writes count frames starting `offset` frames
@@ -80,6 +88,10 @@ bool WriteTrack(const std::string& path, const Track& track, std::string* error)
 bool ReadProject(const std::string& path, Project& project, std::string* error,
 	std::vector<std::string>* skipped = nullptr);
 // Writes the track files and the project into folder (TrackView::Save).
+// <project>.powermix (Read/WriteProject call these)
+bool ReadExtras(const std::string& path, Project& project);
+bool WriteExtras(const std::string& path, const Project& project);
+
 bool WriteProject(const std::string& folder, const std::string& fileName,
 	const Project& project, std::string* error);
 

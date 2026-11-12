@@ -4,6 +4,8 @@
 #define POWERMIX_AUDIO_ENGINE_H
 
 #include <Locker.h>
+
+#include <cstdio>
 #include <MediaDefs.h>
 
 #include "AboutSound.h"
@@ -35,6 +37,14 @@ public:
 	void StartAbout();
 	void FadeOutAbout();
 
+	// The click (Ardour's metronome): while on, a short tick on each beat
+	// of the ruler's grid, higher on the first of each bar. It's only
+	// played, never mixed into a saved mix.
+	void SetClick(bool on, double beatSeconds, int beatsPerBar);
+	// Count-in: the mix holds still while `beats` clicks play, then goes on
+	void StartCountIn(int beats);
+	bool CountingIn() const { return fCountIn > 0; }
+
 	// How long after the mix computes a moment you hear it, in seconds: the
 	// output's latency and one buffer (0 without an audio output)
 	double OutputDelay() const;
@@ -47,6 +57,7 @@ private:
 	static void PlayBuffer(void* cookie, void* buffer, size_t size,
 		const media_raw_audio_format& format);
 	void Fill(int16* out, size_t frames);
+	void AddClicks(double from, bool countIn);
 	static status_t SilentClock(void* cookie);
 
 	BLocker fLock;
@@ -60,6 +71,15 @@ private:
 	bool fPaused;
 	pmx::AboutSound* fAbout;
 	float fLeftLevel, fRightLevel;
+
+	bool fClickOn;
+	double fBeat;				// seconds
+	int fBeatsPerBar;
+	volatile int32 fCountIn;	// frames of count-in left
+	int32 fCountInTotal;
+	int32 fClickAt;				// frames into the sounding tick; -1: none
+	float fClickPitch;
+	FILE* fDump;				// POWERMIX_DUMP_OUTPUT: what's played, for tests
 };
 
 #endif

@@ -532,43 +532,47 @@ MixerView::ComposeModern()
 		v->FillPolygon(circle, 16);
 	}
 
-	// the columns, far to near
+	// The tracks far to near, each column with its name above it, so a
+	// nearer track's column and name cover a farther one's
 	const rgb_color grey = {120, 128, 142, 255};
-	for (const pmx::Scene::FrameFace& face : faces) {
-		if (face.track < 0 || face.track >= fScene.CountTracks())
-			continue;
-		const bool selected = fScene.IsSelected(face.track);
-		const bool muted = fScene.IsMuted(face.track);
-		rgb_color color = look::TrackColor(face.track);
+	auto drawColumn = [&](int track) {
+		const bool selected = fScene.IsSelected(track);
+		const bool muted = fScene.IsMuted(track);
+		rgb_color color = look::TrackColor(track);
 		if (muted)
 			color = look::Mix(color, grey, 0.75f);
-		BPoint points[4];
-		for (int k = 0; k < 4; k++)
-			points[k] = at(face.x[k], face.y[k]);
-		uint8 alpha;
-		switch (face.part) {
-			case 0: alpha = 150; break;
-			case 2: alpha = 30; break;
-			case 3: alpha = 235; break;
-			default: alpha = 70; break;
+		// faces far to near, as the scene sorted them
+		for (const pmx::Scene::FrameFace& face : faces) {
+			if (face.track != track)
+				continue;
+			BPoint points[4];
+			for (int k = 0; k < 4; k++)
+				points[k] = at(face.x[k], face.y[k]);
+			uint8 alpha;
+			switch (face.part) {
+				case 0: alpha = 150; break;
+				case 2: alpha = 30; break;
+				case 3: alpha = 235; break;
+				default: alpha = 70; break;
+			}
+			if (selected && face.part != 3)
+				alpha = uint8(std::min(255, alpha + 40));
+			rgb_color fill = face.part == 3
+				? look::Mix(color, make_color(255, 255, 255), 0.25f) : color;
+			fill.alpha = alpha;
+			v->SetHighColor(fill);
+			v->FillPolygon(points, 4);
+			if (face.part == 3)
+				continue;
+			rgb_color edge = selected ? make_color(255, 255, 255, 220) : color;
+			if (!selected)
+				edge.alpha = 170;
+			v->SetHighColor(edge);
+			v->SetPenSize(selected ? 1.5f : 1.0f);
+			v->StrokePolygon(points, 4);
+			v->SetPenSize(1);
 		}
-		if (selected && face.part != 3)
-			alpha = uint8(std::min(255, alpha + 40));
-		rgb_color fill = face.part == 3 ? look::Mix(color, make_color(255, 255, 255), 0.25f)
-			: color;
-		fill.alpha = alpha;
-		v->SetHighColor(fill);
-		v->FillPolygon(points, 4);
-		if (face.part == 3)
-			continue;
-		rgb_color edge = selected ? make_color(255, 255, 255, 220) : color;
-		if (!selected)
-			edge.alpha = 170;
-		v->SetHighColor(edge);
-		v->SetPenSize(selected ? 1.5f : 1.0f);
-		v->StrokePolygon(points, 4);
-		v->SetPenSize(1);
-	}
+	};
 
 	// the names, on a thin stem above each column
 	BFont font(be_bold_font);
@@ -582,30 +586,42 @@ MixerView::ComposeModern()
 			trackNames.push_back(track.name);
 		fEngine->Unlock();
 	}
-	if (fShowLabels) {
-		for (const pmx::Scene::FrameLabel& label : labels) {
-			if (label.track < 0 || size_t(label.track) >= trackNames.size())
-				continue;
-			const bool selected = fScene.IsSelected(label.track);
-			const char* text = trackNames[size_t(label.track)].c_str();
-			BPoint anchor = at(label.anchorX, label.anchorY);
-			BPoint top = at(label.x, label.y);
-			top.y = std::min(top.y, anchor.y - 14);
-			v->SetHighColor(154, 163, 178, 90);
-			v->StrokeLine(anchor, BPoint(anchor.x, top.y));
-			const float w = font.StringWidth(text) + 16;
-			BRect pill(floorf(top.x - w / 2), floorf(top.y - fh.ascent - fh.descent - 8),
-				floorf(top.x + w / 2), floorf(top.y));
-			if (selected) {
-				look::FillRound(v, pill, 9, look::kAccent);
-				v->SetHighColor(look::kGround);
-			} else {
-				look::FillRound(v, pill, 9, make_color(12, 15, 22, 215));
-				look::StrokeRound(v, pill, 9, look::kBorder);
-				v->SetHighColor(215, 220, 229);
-			}
-			v->DrawString(text, BPoint(pill.left + 8, pill.bottom - 4 - fh.descent));
+	auto drawLabel = [&](const pmx::Scene::FrameLabel& label) {
+		if (!fShowLabels || label.track < 0 || size_t(label.track) >= trackNames.size())
+			return;
+		const bool selected = fScene.IsSelected(label.track);
+		const char* text = trackNames[size_t(label.track)].c_str();
+		BPoint anchor = at(label.anchorX, label.anchorY);
+		BPoint top = at(label.x, label.y);
+		top.y = std::min(top.y, anchor.y - 14);
+		v->SetHighColor(154, 163, 178, 90);
+		v->StrokeLine(anchor, BPoint(anchor.x, top.y));
+		const float w = font.StringWidth(text) + 16;
+		BRect pill(floorf(top.x - w / 2), floorf(top.y - fh.ascent - fh.descent - 8),
+			floorf(top.x + w / 2), floorf(top.y));
+		if (selected) {
+			look::FillRound(v, pill, 9, look::kAccent);
+			v->SetHighColor(look::kGround);
+		} else {
+			look::FillRound(v, pill, 9, make_color(12, 15, 22, 215));
+			look::StrokeRound(v, pill, 9, look::kBorder);
+			v->SetHighColor(215, 220, 229);
 		}
+		v->DrawString(text, BPoint(pill.left + 8, pill.bottom - 4 - fh.descent));
+	};
+
+	std::vector<const pmx::Scene::FrameLabel*> order;
+	for (const pmx::Scene::FrameLabel& label : labels) {
+		if (label.track >= 0 && label.track < fScene.CountTracks())
+			order.push_back(&label);
+	}
+	std::stable_sort(order.begin(), order.end(),
+		[](const pmx::Scene::FrameLabel* a, const pmx::Scene::FrameLabel* b) {
+			return a->depth < b->depth;
+		});
+	for (const pmx::Scene::FrameLabel* label : order) {
+		drawColumn(label->track);
+		drawLabel(*label);
 	}
 
 	const char* hint = B_TRANSLATE("Drag a track to place it · drag the floor to turn the view");

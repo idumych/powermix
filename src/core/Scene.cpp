@@ -1160,7 +1160,7 @@ Scene::ProjectScene(std::vector<FrameLine>& lines, std::vector<FrameFace>& faces
 			continue;
 		const Vertex& point = fVertices[i + 1];
 		FrameLabel label = {anchor.sx + 512, anchor.sy + fCenterY, point.sx + 512,
-			point.sy + fCenterY, anchor.owner - kAnchor};
+			point.sy + fCenterY, anchor.owner - kAnchor, anchor.depth};
 		labels.push_back(label);
 	}
 }

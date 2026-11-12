@@ -107,6 +107,7 @@ public:
 		float anchorX, anchorY;		// the column's top
 		float x, y;					// above it
 		int track;
+		float depth;				// the anchor's; larger is nearer
 	};
 	void ProjectScene(std::vector<FrameLine>& lines, std::vector<FrameFace>& faces,
 		std::vector<FrameLabel>& labels);

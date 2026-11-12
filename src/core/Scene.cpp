@@ -262,20 +262,52 @@ Scene::SetLevel(int index, float level)
 		return;
 	Track& track = fTracks[index];
 	track.level = level;
-	float top = track.silent ? -3.0f : float(Trunc(-level / 11.0f * 40.0f - 3.0f));
+	float top = IsSilent(index) ? -3.0f : float(Trunc(-level / 11.0f * 40.0f - 3.0f));
 	for (Vertex& v : fVertices) {
 		if (v.owner == index && v.tag == kTagTtop)
 			v.y = top;
 	}
 }
 
+bool
+Scene::IsSilent(int index) const
+{
+	return fTracks[index].muted || fTracks[index].soloSilenced;
+}
+
 void
-Scene::SetSilent(int index, bool silent)
+Scene::SetMuted(int index, bool muted)
 {
 	if (index < 0 || index >= CountTracks())
 		return;
-	fTracks[index].silent = silent;
+	fTracks[index].muted = muted;
 	SetLevel(index, fTracks[index].level);
+}
+
+void
+Scene::SetSoloSilenced(int index, bool silenced)
+{
+	if (index < 0 || index >= CountTracks())
+		return;
+	fTracks[index].soloSilenced = silenced;
+	SetLevel(index, fTracks[index].level);
+}
+
+bool
+Scene::IsMuted(int index) const
+{
+	return index >= 0 && index < CountTracks() && fTracks[index].muted;
+}
+
+// mute_selection/SetMuteSolo: scale the column's top, its anchor and label
+// point ('itop' vertices) towards the floor
+void
+Scene::SquashStep(int index, float factor)
+{
+	for (Vertex& v : fVertices) {
+		if ((v.owner == index || v.owner == index + kAnchor) && v.tag == kTagItop)
+			v.y *= factor;
+	}
 }
 
 // #pragma mark - Selection
@@ -387,6 +419,17 @@ Scene::MoveCameraNearer()
 void
 Scene::Step()
 {
+	for (int i = 0; i < CountTracks(); i++) {
+		Track& track = fTracks[i];
+		int target = (track.muted ? 3 : 0) + (track.soloSilenced ? 3 : 0);
+		if (track.squash < target) {
+			SquashStep(i, 0.68f);
+			track.squash++;
+		} else if (track.squash > target) {
+			SquashStep(i, 1.4705882f);
+			track.squash--;
+		}
+	}
 	if (fDemo) {
 		fPitch += 0.01f;
 		fYaw += 0.0064f;
@@ -880,7 +923,7 @@ Scene::DrawParticles()
 				} else {
 					const int count = CountTracks();
 					auto loudness = [this](int t) {
-						return fTracks[t].silent ? 0.0f : -fTracks[t].level / 11.0f;
+						return IsSilent(t) ? 0.0f : -fTracks[t].level / 11.0f;
 					};
 					int t = -1;
 					for (int tries = 5; tries > 0 && t < 0; tries--) {

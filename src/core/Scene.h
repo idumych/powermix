@@ -38,7 +38,13 @@ public:
 	// SetChannelLevel: the level bar inside the column, 2..15 (Mixer's
 	// TrackLevel); a silent track's bar drops to the floor.
 	void SetLevel(int index, float level);
-	void SetSilent(int index, bool silent);
+	// Muted, or silenced by another track's solo (SetMuteSolo): the level
+	// bar drops, and the column shrinks by x0.68 three times per state,
+	// one step per Step(). Growing back multiplies by 1.4705882, so the
+	// height drifts a little, as in the original.
+	void SetMuted(int index, bool muted);
+	void SetSoloSilenced(int index, bool silenced);
+	bool IsMuted(int index) const;
 
 	bool IsSelected(int index) const;
 	void Select(int index, bool selected);
@@ -103,8 +109,10 @@ private:
 	struct Track {
 		std::string name;
 		bool selected = false;
-		bool silent = false;
+		bool muted = false;
+		bool soloSilenced = false;
 		float level = 2;
+		int squash = 0;		// x0.68 steps applied to the column
 	};
 	struct Particle {
 		float x, y, z;
@@ -117,6 +125,8 @@ private:
 	void MoveTrack(int index, float dx, float dy, float dz);
 	void KeepInside();
 	void UpdateMappers(int index);
+	bool IsSilent(int index) const;
+	void SquashStep(int index, float factor);
 
 	void Clear();
 	void Line(int x1, int y1, int x2, int y2, const uint8_t* ramp, bool antialias);

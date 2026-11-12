@@ -23,12 +23,12 @@ UNAME    := $(shell uname -s)
 COSMOE_ROOT ?= /usr
 
 # All .cpp files, with their directories. Header dirs go in INCLUDES.
-CORE_SRCS := src/core/Project.cpp src/core/Mixer.cpp src/core/Palette.cpp src/core/Scene.cpp
+CORE_SRCS := src/core/Project.cpp src/core/Mixer.cpp src/core/Palette.cpp src/core/Scene.cpp src/core/WaveFile.cpp
 SRCS     := $(CORE_SRCS) $(wildcard src/app/*.cpp)
 INCLUDES := src/core src/app
 # Libraries beyond the Haiku API (same on every platform), e.g. -lsqlite3 -lcrypto.
 # An app that uses B_TRANSLATE needs -llocalestub (Haiku and Hokku both ship it).
-APP_LIBS :=
+APP_LIBS := -lmedia -llocalestub
 # Files the .rdef imports (icons, PNG resources), so changing one rebuilds
 RSRC_DEPS :=
 

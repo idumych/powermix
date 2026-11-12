@@ -1,8 +1,10 @@
 // Importer.cpp: see Importer.h.
 #include "Importer.h"
 
-#include <MediaFile.h>
-#include <MediaTrack.h>
+#ifndef POWERMIX_NO_MEDIA_KIT
+#	include <MediaFile.h>
+#	include <MediaTrack.h>
+#endif
 
 #include <Path.h>
 
@@ -20,6 +22,9 @@ DecodeSound(const entry_ref& ref, std::vector<int16>& samples)
 			sound.rate);
 		return samples.empty() ? B_ERROR : B_OK;
 	}
+#ifdef POWERMIX_NO_MEDIA_KIT
+	return B_NOT_SUPPORTED;	// no Media Kit on Haiku arm64: WAVE only
+#else
 	BMediaFile file(&ref);
 	status_t status = file.InitCheck();
 	if (status != B_OK)
@@ -73,4 +78,5 @@ DecodeSound(const entry_ref& ref, std::vector<int16>& samples)
 		return samples.empty() ? B_ERROR : B_OK;
 	}
 	return B_BAD_TYPE;
+#endif
 }

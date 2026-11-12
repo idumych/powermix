@@ -44,7 +44,9 @@ ifneq ($(HAIKU_CROSS),)
   # (and tools/haiku-arm64/build-deps.sh's static libraries, if the app needs any)
   override CXXFLAGS += $(HAIKU_CROSS_CFLAGS) -I$(HAIKU_ARM64)/deps/include
   override LDFLAGS  += $(HAIKU_CROSS_LDFLAGS) -L$(HAIKU_ARM64)/deps/lib
-  LIBS         := -lbe -ltracker -ltranslation -lnetwork $(APP_LIBS)
+  # Haiku arm64 has no Media Kit: silent mixing, WAVE import only
+  override CXXFLAGS += -DPOWERMIX_NO_MEDIA_KIT
+  LIBS         := -lbe -ltracker -ltranslation -lnetwork $(LOCALESTUB)
   RESOURCES     = rc -o obj/$(NAME).rsrc $(RDEF) && xres -o $@ obj/$(NAME).rsrc
 else ifeq ($(UNAME),Haiku)
   PLATFORM     := Haiku

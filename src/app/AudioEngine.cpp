@@ -2,7 +2,9 @@
 // old BDACStream (init_stuff, record_func); BSoundPlayer does the same job.
 #include "AudioEngine.h"
 
-#include <SoundPlayer.h>
+#ifndef POWERMIX_NO_MEDIA_KIT
+#	include <SoundPlayer.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -51,6 +53,15 @@ AudioEngine::FadeOutAbout()
 status_t
 AudioEngine::Start()
 {
+#ifdef POWERMIX_NO_MEDIA_KIT
+	// Haiku arm64 has no Media Kit: mix silently in time
+	if (fClock < 0) {
+		fClockRunning = true;
+		fClock = spawn_thread(SilentClock, "silent clock", B_URGENT_DISPLAY_PRIORITY, this);
+		resume_thread(fClock);
+	}
+	return B_NOT_SUPPORTED;
+#else
 	if (fPlayer != NULL)
 		return B_OK;
 	media_raw_audio_format format = media_raw_audio_format::wildcard;
@@ -74,6 +85,7 @@ AudioEngine::Start()
 	fPlayer->Start();
 	fPlayer->SetHasData(true);
 	return B_OK;
+#endif
 }
 
 void
@@ -85,11 +97,13 @@ AudioEngine::Stop()
 		wait_for_thread(fClock, &result);
 		fClock = -1;
 	}
+#ifndef POWERMIX_NO_MEDIA_KIT
 	if (fPlayer == NULL)
 		return;
 	fPlayer->Stop();
 	delete fPlayer;
 	fPlayer = NULL;
+#endif
 }
 
 void

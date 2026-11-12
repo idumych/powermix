@@ -8,7 +8,9 @@ namespace pmx {
 
 namespace {
 
-int32_t Round(float f) { return int32_t(lrintf(f)); }
+// 3dmiX converts with C casts (gcc2: fistp with the FPU set to truncate),
+// although decompilers show them as ROUND(): truncate toward zero.
+int32_t Trunc(float f) { return int32_t(f); }
 
 }	// namespace
 
@@ -96,7 +98,7 @@ Mixer::TrackLevel(size_t track) const
 void
 Mixer::FillWindows()
 {
-	const int32_t at = Round(float(fTime * kSampleRate));
+	const int32_t at = Trunc(float(fTime * kSampleRate));
 	for (size_t i = 0; i < fChannels.size(); i++) {
 		Channel& channel = fChannels[i];
 		channel.playing = fProject->tracks[i].Fill(channel.window.data(),
@@ -158,7 +160,7 @@ Mixer::MixBlock(int32_t block, int16_t* out)
 			v = 32766.0f;
 		if (v <= -32766.0f)
 			v = -32766.0f;
-		return int16_t(Round(v));
+		return int16_t(Trunc(v));
 	};
 
 	for (int32_t frame = 0; frame < kBlockFrames; frame += 2) {
@@ -169,7 +171,7 @@ Mixer::MixBlock(int32_t block, int16_t* out)
 				channel.smoothLeft = (channel.smoothLeft * 31.0f + channel.panLeft) * 0.03125f;
 				gainRight[i] = channel.gain * channel.smoothRight;
 				gainLeft[i] = channel.gain * channel.smoothLeft;
-				int32_t delay = int32_t(lrintf(fProject->tracks[i].x / 3.5f));
+				int32_t delay = Trunc(fProject->tracks[i].x / 3.5f);
 				delayLeft[i] = std::max(delay, 0);
 				delayRight[i] = std::max(-delay, 0);
 			}

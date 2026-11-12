@@ -92,7 +92,9 @@ private:
 	bool fOk = true;
 };
 
-int32_t Round(float f) { return int32_t(lrintf(f)); }
+// 3dmiX converts with C casts (gcc2: fistp with the FPU set to truncate),
+// although decompilers show them as ROUND(): truncate toward zero.
+int32_t Trunc(float f) { return int32_t(f); }
 
 std::string Leaf(const std::string& path)
 {
@@ -121,8 +123,8 @@ void SetError(std::string* error, const std::string& message)
 bool
 Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 {
-	const int32_t loopStart = Round(loopIn * kSampleRate);
-	const int32_t loopLength = std::max(0, Round(loopOut * kSampleRate) - loopStart);
+	const int32_t loopStart = Trunc(loopIn * kSampleRate);
+	const int32_t loopLength = std::max(0, Trunc(loopOut * kSampleRate) - loopStart);
 	const int32_t available = int32_t(samples.size()) - loopStart;
 	if (loopLength == 0)
 		return false;	// the original divides by zero here
@@ -137,7 +139,7 @@ Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 			bool last = false;
 			float left = (end - time) * kSampleRate;
 			if (left <= float(n)) {
-				n = std::max(0, Round(left));
+				n = std::max(0, Trunc(left));
 				last = true;
 			}
 			if (loopStart + phase >= 0)
@@ -167,7 +169,7 @@ Track::Fill(int16_t* out, int32_t count, int32_t at) const
 	for (const Clip& clip : clips) {
 		if (!(clip.start <= to && from <= clip.end))
 			continue;
-		int32_t delay = Round((clip.start - from) * kSampleRate);
+		int32_t delay = Trunc((clip.start - from) * kSampleRate);
 		if (delay < 0)
 			played |= clip.GetData(out, -delay, count);
 		else if (delay < count)

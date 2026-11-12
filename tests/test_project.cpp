@@ -36,9 +36,11 @@ static void TestClipLoop()
 	// Track::Fill places the clip at its start time and clears the rest
 	Track track;
 	track.clips.push_back(clip);
+	// (1 - 44097 / 44100) * 44100 is 2.99999 in float and 3dmiX truncates,
+	// so the clip starts one frame early
 	int16_t buffer[8];
 	CHECK(track.Fill(buffer, 8, kSampleRate - 3));
-	const int16_t want2[8] = {0, 0, 0, 1, 2, 3, 4, 1};
+	const int16_t want2[8] = {0, 0, 1, 2, 3, 4, 1, 2};
 	CHECK(memcmp(buffer, want2, sizeof(want2)) == 0);
 	CHECK(!track.Fill(buffer, 8, 3 * kSampleRate));
 }

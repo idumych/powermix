@@ -23,7 +23,7 @@ UNAME    := $(shell uname -s)
 COSMOE_ROOT ?= /usr
 
 # All .cpp files, with their directories. Header dirs go in INCLUDES.
-CORE_SRCS := src/core/Project.cpp src/core/Mixer.cpp
+CORE_SRCS := src/core/Project.cpp src/core/Mixer.cpp src/core/Palette.cpp src/core/Scene.cpp
 SRCS     := $(CORE_SRCS) $(wildcard src/app/*.cpp)
 INCLUDES := src/core src/app
 # Libraries beyond the Haiku API (same on every platform), e.g. -lsqlite3 -lcrypto.
@@ -113,7 +113,7 @@ hpkg:
 # Host-side tests: only portable code, no Haiku headers.
 HOST_CXX ?= g++
 MIXES    ?= vm/orig/boot/optional/sound/3D Mixes
-TESTS    := test_project test_mixer
+TESTS    := test_project test_mixer test_scene
 test: $(addprefix obj/tests/,$(TESTS))
 	@for t in $(TESTS); do echo "== $$t"; obj/tests/$$t "$(MIXES)" || exit 1; done
 

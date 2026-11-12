@@ -87,3 +87,59 @@ out of the public tree.
   text file in. `tools/wait-desktop.py` waits for the Deskbar after boot.
 - Terminal: `N=27 beos-terminal.sh` on this disk (one more app link than
   a fresh install).
+
+## The 3D view's renderer (TSoundView)
+
+- Software renderer into a **1024x480 B_CMAP8 bitmap**; `Draw` blits it at
+  x = min(0, round((window width - 1024) / 2)), y = 0 (centred on the
+  *window*, not the view), only the dirty rectangle (`clear` zeroes the
+  union of this and the previous frame's boxes; index 0 = black).
+- Projection (`change_view_point*`), angles (a, b, c), for (x, y, z):
+  x1 = x cos a - y sin a; y1 = x sin a + y cos a; z1 = x1 sin c + z cos c;
+  d = y1 sin b + z1 cos b; s = 300 / |d - 430|;
+  X = round((x1 cos c - z sin c) s + 512); Y = round((y1 cos b - z1 sin b) s + 256).
+  Start angles (0, -0.32, 0.1) (fields 0x1348/-0x134c/0x1350). y is up
+  when negative.
+- Scene vectors (constructor): floor grid x, z = -256..256 step 21.333 at
+  y = 0; in front (z = 290) an x double arrow -140..140 with arrowheads and
+  the letters L and R from segments (colour 200 = red ramp); a z double
+  arrow at x = 290. Line colour: 200 red ramp, 100 green-grey ramp, lines
+  with constant z one table (0x38a50, set elsewhere), others blue.
+- Ramps (32 entries, colour of intensity i, snapped with IndexForColor):
+  blue (0, 0, G[7i]); red (G[7i], 0, 0); green-grey (G[i], G[2.6i], G[i]);
+  20 depth blues (0, 0, G[G[(k+8)/3.3 i]]), k = 0..19; grey G[2.2857i] x3.
+  G = the `Gamma` table (0x584e0, 256 bytes; regenerate, don't copy).
+- Lines (`fline` clips, then `anti_fline`): Wu-style, two pixels per step,
+  writing ramp[31 - f] and ramp[f] (overwrite, no blend).
+- Translucent faces (`BuildMappers`, `hline`, `fill_4`): 6 colours x 4
+  levels, each a 256-entry map index -> IndexForColor(G[cmix(c, bg)] per
+  channel); faces remap the pixels under them. Colours: red/green/blue
+  c = 55, 93, 131, 229; cyan/magenta/yellow c = 35, 73, 111, 229.
+  cmix(a, b) = min(255, round((((a*b) >> 9) + round(b/1.9) + round(a*0.95)) * 0.8)).
+- Polygons: 4 vertex indices + mapper; Shell sort by mean vertex depth,
+  far to near (`sort_polys`), then `fill_4` each (`render_polys`).
+- Frame (`draw_vectors`): vectors, particles (2048 random points, r/g/b/w),
+  polygons, labels (under the channel-list semaphore).
+- **Every float-to-int conversion truncates.** Ghidra shows `ROUND(x)`, but
+  gcc2 emits fnstcw / `mov ah,0xc` / fldcw / fistp (round toward zero) for
+  all 389 conversions in the binary. Using lrint instead put lines and
+  faces a pixel off (78% vs 94% identical floor pixels). The Gamma table
+  is (int)(255 (i/255)^(1/1.45)), all 256 entries.
+- `b_sqrt` (projection's |d|): bit-trick guess + one refinement; accurate
+  enough that it makes no pixel difference, kept anyway.
+- IndexForColor: R5's 15-bit inverse map (dumped with tools/beos/dumpcmap.cpp
+  to vm/orig/cmap/cmap.bin, not shipped) follows no simple nearest-colour
+  rule; Haiku's (<<3 expansion, weighted distance) agrees on 95.6% of it.
+  PowerMix uses Haiku's rule; `PMX_CMAP=vm/orig/cmap/cmap.bin` makes
+  tools/host/render_scene use R5's for comparisons.
+- Result (tools/host/render_scene vs vm/ref/mixer-controls.png, the-lynx,
+  view origin at screen (30, 50)): 98.0% identical pixels with R5's map,
+  97.6% with Haiku's; the rest is label text, the level bars (the reference
+  was playing) and a dot where shallow lines step a row (the first pixel
+  after a step is one ramp entry brighter; cause not found).
+- Hidden mixer keys (TSoundView::KeyDown): arrows move the selection 15,
+  +/- zoom (focal x1.05, 30..900), , and . move the camera (. clamps the
+  wrong way), A select all, D demo rotation, M mute, S solo, P particle
+  fountains, W back to the tracks. Command-drag = vertical_move (visual
+  height only; Channel's reverb level is always 0). The transport panels
+  (composit_pannel1/2) are empty in this build.

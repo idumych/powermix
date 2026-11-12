@@ -22,6 +22,7 @@
 // "<project>.powermix" beside the project, which 3dmiX never reads: text,
 // a "PowerMix 1" line, then one tab-separated line per item:
 //   fade  <track name>  <clip index>  <fade in>  <fade out>   (seconds)
+//   move  <track name>  <time>  <x>  <y>    (a point of its path, in order)
 #ifndef POWERMIX_PROJECT_H
 #define POWERMIX_PROJECT_H
 
@@ -54,9 +55,19 @@ struct Clip {
 	bool GetData(int16_t* out, int32_t offset, int32_t count) const;
 };
 
+// PowerMix's floor automation (Ardour's automation, for the one thing
+// PowerMix mixes by): where a track is at a time of the mix
+struct PathPoint {
+	float time, x, y;
+};
+
 struct Track {
 	std::string name;		// also the track file's name
 	float x = 0, y = 0;		// position on the mixer's floor, -256..256
+	// its moves, in time order; empty: it stays at x, y. Between points it
+	// goes in a straight line; before the first and after the last it rests.
+	std::vector<PathPoint> path;
+	void PositionAt(double time, float& px, float& py) const;
 	bool addedByHand = false;	// runtime only: its 3D level bar is blue
 	std::vector<Clip> clips;
 

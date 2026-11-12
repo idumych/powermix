@@ -48,6 +48,12 @@ size_t PlaceRecording(Track& track, float start, Clip take);
 // what would fall before 0 is dropped.
 void AlignTake(float& start, std::vector<int16_t>& samples, float shift);
 
+// Floor automation. Writing a move (Ardour's touch mode): a point at `time`,
+// replacing the track's points after `since` up to it, so moving through a
+// stretch again replaces what was there. ShiftPath moves the whole path.
+void WritePathPoint(Track& track, float since, float time, float x, float y);
+void ShiftPath(Track& track, float dx, float dy);
+
 // Clips are addressed as (track, clip index)
 typedef std::pair<size_t, size_t> ClipRef;
 typedef std::set<ClipRef> ClipSelection;

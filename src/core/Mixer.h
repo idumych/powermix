@@ -72,10 +72,12 @@ private:
 		float gain = 0;
 		float level = 2;
 		bool muted = false, soloed = false;
+		float x = 0, y = 0;		// where the track is for this block
 	};
 
 	void FillWindows();
 	void UpdateChannel(size_t i, int32_t block);
+	void PlaceChannels();
 	void MixBlock(int32_t block, int16_t* out);
 
 	const Project* fProject;

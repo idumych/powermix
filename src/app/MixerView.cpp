@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "AudioEngine.h"
+#include "Edit.h"
 #include "Look.h"
 #include "ModernViews.h"
 #include "Palette.h"
@@ -41,7 +42,12 @@ MixerView::MixerView(BRect frame, AudioEngine* engine)
 	fPrevPitch(0),
 	fPrevYaw(0),
 	fMoved(false),
-	fDepthOnly(false)
+	fDepthOnly(false),
+	fEditor(NULL),
+	fRecordMoves(false),
+	fMoving(-1),
+	fKeyMove(false),
+	fLastHeard(0)
 {
 	SetViewColor(B_TRANSPARENT_COLOR);
 	BRect bounds(0, 0, pmx::Scene::kWidth - 1, pmx::Scene::kHeight - 1);
@@ -205,9 +211,106 @@ MixerView::SyncTracks()
 void
 MixerView::WritePositions()
 {
+	// The scene and the project agree on where tracks are: a track without a
+	// path stands where the scene has it; one with a path is where the path
+	// has it at the time you hear, unless you're moving it with Record moves
+	// on, when the move is written into the path. Call with the engine locked.
 	pmx::Project& project = fEngine->Project();
-	for (int i = 0; i < fScene.CountTracks() && i < int(project.tracks.size()); i++)
-		fScene.GetPosition(i, project.tracks[size_t(i)].x, project.tracks[size_t(i)].y);
+	const float now = float(std::max(0.0, fEngine->Mixer().Time() - fEngine->OutputDelay()));
+	// a new point replaces the ones since the last; at the same time (or
+	// after the loop started over) only one at this moment
+	const float since = now > fLastHeard ? fLastHeard : now - 0.0001f;
+	const bool playing = !fEngine->IsPaused();
+	for (int i = 0; i < fScene.CountTracks() && i < int(project.tracks.size()); i++) {
+		pmx::Track& track = project.tracks[size_t(i)];
+		if (fRecordMoves && playing && Touched(i)) {
+			float x, y;
+			fScene.GetPosition(i, x, y);
+			pmx::WritePathPoint(track, since, now, x, y);
+		} else if (!track.path.empty()) {
+			float x, y;
+			track.PositionAt(now, x, y);
+			fScene.SetPosition(i, x, y);
+		} else
+			fScene.GetPosition(i, track.x, track.y);
+	}
+	fLastHeard = now;
+}
+
+bool
+MixerView::Touched(int track) const
+{
+	if (track == fMoving)
+		return true;
+	return (fTracking == kDragging || fKeyMove) && fScene.IsSelected(track);
+}
+
+// Moving a track that has a path without Record moves: the whole path moves
+// as far as the track did. Call with the engine locked.
+void
+MixerView::ShiftPaths(const std::vector<std::pair<float, float> >& before)
+{
+	if (fRecordMoves)
+		return;
+	pmx::Project& project = fEngine->Project();
+	for (int i = 0; i < fScene.CountTracks() && i < int(project.tracks.size()); i++) {
+		if (project.tracks[size_t(i)].path.empty() || size_t(i) >= before.size())
+			continue;
+		float x, y;
+		fScene.GetPosition(i, x, y);
+		if (x != before[size_t(i)].first || y != before[size_t(i)].second)
+			pmx::ShiftPath(project.tracks[size_t(i)], x - before[size_t(i)].first,
+				y - before[size_t(i)].second);
+	}
+}
+
+// Before writing or shifting a path: one undo step
+void
+MixerView::CommitForMove(bool selection, int track)
+{
+	if (fEditor == NULL || !fEngine->Lock())
+		return;
+	bool paths = false;
+	const pmx::Project& project = fEngine->Project();
+	for (int i = 0; i < fScene.CountTracks() && i < int(project.tracks.size()); i++) {
+		if ((selection && fScene.IsSelected(i)) || i == track)
+			paths |= fRecordMoves || !project.tracks[size_t(i)].path.empty();
+	}
+	if (paths)
+		fEditor->Commit();
+	fEngine->Unlock();
+}
+
+void
+MixerView::BeginMove(int track)
+{
+	CommitForMove(false, track);
+	fMoving = track;
+}
+
+void
+MixerView::MoveTrack(int track, float x, float y)
+{
+	if (!fEngine->Lock())
+		return;
+	std::vector<std::pair<float, float> > before;
+	for (int i = 0; i < fScene.CountTracks(); i++) {
+		float bx, by;
+		fScene.GetPosition(i, bx, by);
+		before.push_back(std::make_pair(bx, by));
+	}
+	fScene.SetPosition(track, x, y);
+	ShiftPaths(before);
+	WritePositions();
+	fEngine->Unlock();
+	Render();
+	Invalidate();
+}
+
+void
+MixerView::EndMove()
+{
+	fMoving = -1;
 }
 
 void
@@ -385,6 +488,33 @@ MixerView::ComposeModern()
 		v->StrokeLine(at(line.x1, line.y1), at(line.x2, line.y2));
 	}
 
+	// each track's moves: a line on the floor along its path
+	std::vector<std::vector<pmx::PathPoint> > paths;
+	if (fEngine->Lock()) {
+		for (const pmx::Track& track : fEngine->Project().tracks)
+			paths.push_back(track.path);
+		fEngine->Unlock();
+	}
+	v->SetPenSize(std::max(1.0f, 2 * scale));
+	for (size_t i = 0; i < paths.size() && int(i) < fScene.CountTracks(); i++) {
+		if (paths[i].size() < 2)
+			continue;
+		rgb_color color = look::TrackColor(int(i));
+		color.alpha = fScene.IsSelected(int(i)) ? 220 : 120;
+		v->SetHighColor(color);
+		const size_t step = std::max<size_t>(1, paths[i].size() / 600);
+		float fx, fy;
+		fScene.ProjectPoint(paths[i][0].x, 0, paths[i][0].y, fx, fy, depth);
+		BPoint last = at(fx, fy);
+		for (size_t k = step; k < paths[i].size(); k += step) {
+			fScene.ProjectPoint(paths[i][k].x, 0, paths[i][k].y, fx, fy, depth);
+			BPoint p = at(fx, fy);
+			v->StrokeLine(last, p);
+			last = p;
+		}
+	}
+	v->SetPenSize(1);
+
 	// shadows: a circle on the floor under each column
 	for (int i = 0; i < fScene.CountTracks(); i++) {
 		float x, y;
@@ -541,6 +671,7 @@ MixerView::MouseDown(BPoint where)
 	}
 	SelectionChanged();
 	fDepthOnly = (modifiers & B_SHIFT_KEY) != 0;
+	CommitForMove(true, -1);
 	fTracking = kDragging;
 	Render();
 	Invalidate();
@@ -561,12 +692,17 @@ MixerView::MouseMoved(BPoint where, uint32 transit, const BMessage* drag)
 		fPrevYaw = fScene.Yaw();
 		fScene.Rotate(dx, dy);
 		fMoved = true;
-	} else {
-		fScene.DragSelection(dx, dy, fDepthOnly);
-		if (fEngine->Lock()) {
-			WritePositions();
-			fEngine->Unlock();
+	} else if (fEngine->Lock()) {
+		std::vector<std::pair<float, float> > before;
+		for (int i = 0; i < fScene.CountTracks(); i++) {
+			float bx, by;
+			fScene.GetPosition(i, bx, by);
+			before.push_back(std::make_pair(bx, by));
 		}
+		fScene.DragSelection(dx, dy, fDepthOnly);
+		ShiftPaths(before);
+		WritePositions();
+		fEngine->Unlock();
 	}
 	Render();
 	Invalidate();
@@ -645,6 +781,18 @@ MixerView::MessageReceived(BMessage* message)
 void
 MixerView::KeyDown(const char* bytes, int32 count)
 {
+	// the arrows move the selection: its paths too, or into them
+	const bool arrow = bytes[0] == B_LEFT_ARROW || bytes[0] == B_RIGHT_ARROW
+		|| bytes[0] == B_UP_ARROW || bytes[0] == B_DOWN_ARROW;
+	std::vector<std::pair<float, float> > before;
+	if (arrow) {
+		CommitForMove(true, -1);
+		for (int i = 0; i < fScene.CountTracks(); i++) {
+			float bx, by;
+			fScene.GetPosition(i, bx, by);
+			before.push_back(std::make_pair(bx, by));
+		}
+	}
 	switch (bytes[0]) {
 		case B_LEFT_ARROW:
 			fScene.MoveSelection(-15, 0);
@@ -702,7 +850,12 @@ MixerView::KeyDown(const char* bytes, int32 count)
 			return;
 	}
 	if (fEngine->Lock()) {
+		if (arrow) {
+			ShiftPaths(before);
+			fKeyMove = true;
+		}
 		WritePositions();
+		fKeyMove = false;
 		fEngine->Unlock();
 	}
 	Render();

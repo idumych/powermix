@@ -1150,9 +1150,16 @@ InspectorView::InspectorView(BRect frame, AudioEngine* engine, MixerView* mixer,
 		new BMessage(kMsgToggleArm), ModernButton::kNoIcon, ModernButton::kRecord);
 	fEdit = new ModernButton(BRect(0, 0, 60, 33), "edit", B_TRANSLATE("Edit sound"),
 		new BMessage(kMsgEditClip));
+	fRecordMoves = new ModernButton(BRect(0, 0, 60, 33), "record moves",
+		B_TRANSLATE("Record moves"), new BMessage(kMsgRecordMoves), ModernButton::kNoIcon,
+		ModernButton::kRecord);
+	fClearMoves = new ModernButton(BRect(0, 0, 60, 33), "clear moves", B_TRANSLATE("Clear moves"),
+		new BMessage(kMsgClearMoves));
 	AddChild(fMute);
 	AddChild(fSolo);
 	AddChild(fArm);
+	AddChild(fRecordMoves);
+	AddChild(fClearMoves);
 	AddChild(fEdit);
 	LayoutChildren();
 }
@@ -1179,6 +1186,12 @@ InspectorView::LayoutChildren()
 	}
 	fEdit->ResizeTo(w, 33);
 	fEdit->MoveTo(pad.left, top + 41);
+	// the floor automation: write moves, clear this track's
+	const float half = floorf((w - 8) / 2);
+	fRecordMoves->ResizeTo(half, 33);
+	fRecordMoves->MoveTo(pad.left, top + 82);
+	fClearMoves->ResizeTo(w - half - 8, 33);
+	fClearMoves->MoveTo(pad.left + half + 8, top + 82);
 }
 
 void
@@ -1224,6 +1237,7 @@ InspectorView::Refresh()
 	BString signature;
 	bool muted = false, soloed = false;
 	size_t clips = 0;
+	size_t pathPoints = 0;
 	BString name;
 	pmx::Scene& scene = fMixer->Scene();
 	if (fEngine->Lock()) {
@@ -1233,11 +1247,15 @@ InspectorView::Refresh()
 			soloed = fEngine->Mixer().IsSoloed(size_t(selected));
 			clips = project.tracks[size_t(selected)].clips.size();
 			name = project.tracks[size_t(selected)].name.c_str();
+			pathPoints = project.tracks[size_t(selected)].path.size();
 		}
 		signature << int32(project.tracks.size()) << "|";
+		for (const pmx::Track& t : project.tracks)
+			signature << int32(t.path.size()) << ",";
 		fEngine->Unlock();
 	}
 	const bool armed = selected >= 0 && fRecord->armed == selected;
+	signature << int32(fMixer->RecordMoves()) << "|";
 	signature << selected << "|" << int32(muted) << int32(soloed) << int32(armed) << "|"
 		<< int32(clips) << "|" << name;
 	for (int i = 0; i < scene.CountTracks(); i++) {
@@ -1258,6 +1276,11 @@ InspectorView::Refresh()
 	arm.AddInt32("track", selected);
 	fArm->SetMessage(new BMessage(arm));
 	fEdit->SetEnabled(have && clips > 0);
+	fRecordMoves->SetValue(fMixer->RecordMoves() ? B_CONTROL_ON : B_CONTROL_OFF);
+	fClearMoves->SetEnabled(have && pathPoints > 0);
+	BMessage clear(kMsgClearMoves);
+	clear.AddInt32("track", selected);
+	fClearMoves->SetMessage(new BMessage(clear));
 	fMute->SetValue(muted ? B_CONTROL_ON : B_CONTROL_OFF);
 	fSolo->SetValue(soloed ? B_CONTROL_ON : B_CONTROL_OFF);
 	BMessage mute(kMsgToggleMute), solo(kMsgToggleSolo), edit(kMsgEditClip);
@@ -1278,14 +1301,19 @@ InspectorView::DrawContent(BView* v, BRect b)
 	pmx::Scene& scene = fMixer->Scene();
 	BString name;
 	size_t clips = 0;
+	std::vector<std::vector<pmx::PathPoint> > paths;
 	if (fEngine->Lock()) {
 		const pmx::Project& project = fEngine->Project();
 		if (selected >= 0 && size_t(selected) < project.tracks.size()) {
 			name = project.tracks[size_t(selected)].name.c_str();
 			clips = project.tracks[size_t(selected)].clips.size();
 		}
+		for (const pmx::Track& t : project.tracks)
+			paths.push_back(t.path);
 		fEngine->Unlock();
 	}
+	const bool selectedMoves = selected >= 0 && size_t(selected) < paths.size()
+		&& !paths[size_t(selected)].empty();
 
 	v->SetHighColor(kPanel);
 	v->FillRect(b);
@@ -1311,6 +1339,8 @@ InspectorView::DrawContent(BView* v, BRect b)
 			count = B_TRANSLATE("1 clip");
 		else
 			count.SetToFormat(B_TRANSLATE("%d clips"), int(clips));
+		if (selectedMoves)
+			count << " · " << B_TRANSLATE("moves");
 		v->DrawString(count.String(), BPoint(b.right - 16 - v->StringWidth(count.String()), 30));
 	} else {
 		UseFont(v, be_bold_font, 14);
@@ -1335,6 +1365,23 @@ InspectorView::DrawContent(BView* v, BRect b)
 	v->SetHighColor(kAccentLine);
 	float cx = floorf((pad.left + pad.right) / 2);
 	v->StrokeLine(BPoint(cx, pad.top), BPoint(cx, pad.bottom));
+	// each track's moves, as a line over the floor
+	for (size_t i = 0; i < paths.size(); i++) {
+		if (paths[i].size() < 2)
+			continue;
+		rgb_color color = TrackColor(int(i));
+		color.alpha = int(i) == selected ? 230 : 110;
+		v->SetHighColor(color);
+		v->SetPenSize(int(i) == selected ? 2 : 1.2f);
+		const size_t step = std::max<size_t>(1, paths[i].size() / 400);
+		BPoint last = PadPoint(paths[i][0].x, paths[i][0].y);
+		for (size_t k = step; k < paths[i].size(); k += step) {
+			BPoint p = PadPoint(paths[i][k].x, paths[i][k].y);
+			v->StrokeLine(last, p);
+			last = p;
+		}
+		v->SetPenSize(1);
+	}
 	for (int i = 0; i < scene.CountTracks(); i++) {
 		if (i == selected)
 			continue;
@@ -1387,11 +1434,11 @@ InspectorView::DrawContent(BView* v, BRect b)
 	}
 
 	// how it works, at the bottom if there's room
-	const float buttonsBottom = fEdit->Frame().bottom;
+	const float buttonsBottom = fClearMoves->Frame().bottom;
 	UseFont(v, be_plain_font, 11);
 	std::vector<BString> lines = Wrap(v, selected >= 0
 		? B_TRANSLATE("Nearer is louder; left and right pan and delay the far ear. "
-			"Hold Ctrl while dragging clips to snap them to the beat.")
+			"With Record moves on, drag the track while the mix plays to make it move.")
 		: B_TRANSLATE("Click a track in the list, on the stage or on the floor plan "
 			"above to see where it sits in the mix."), pad.Width() - 24);
 	const float noteHeight = lines.size() * 15 + 18;
@@ -1439,6 +1486,7 @@ InspectorView::MouseDown(BPoint where)
 	fDragging = hit >= 0 ? hit : selected;
 	if (fDragging < 0)
 		return;
+	fMixer->BeginMove(fDragging);
 	SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 	if (hit < 0)
 		MouseMoved(where, 0, NULL);
@@ -1451,12 +1499,14 @@ InspectorView::MouseMoved(BPoint where, uint32 transit, const BMessage* drag)
 		return;
 	float x, y;
 	FloorPoint(where, x, y);
-	fMixer->Scene().SetPosition(fDragging, x, y);
+	fMixer->MoveTrack(fDragging, x, y);
 	Refresh();
 }
 
 void
 InspectorView::MouseUp(BPoint where)
 {
+	if (fDragging >= 0)
+		fMixer->EndMove();
 	fDragging = -1;
 }

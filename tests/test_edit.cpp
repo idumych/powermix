@@ -135,6 +135,32 @@ int main()
 		CHECK(history.UndoSteps() >= 5 && history.UndoSteps() <= 7);
 	}
 
+	// floor automation: writing replaces the stretch moved through
+	{
+		Track m;
+		m.x = 10;
+		float px, py;
+		m.PositionAt(5, px, py);
+		CHECK(px == 10);						// no path: where it stands
+		for (int i = 0; i <= 10; i++)
+			WritePathPoint(m, i - 1.0f, float(i), float(i * 10), 0);
+		CHECK(m.path.size() == 11);
+		m.PositionAt(2.5, px, py);
+		CHECK(NEAR(px, 25));					// between points, a straight line
+		m.PositionAt(-1, px, py);
+		CHECK(px == 0);							// rests before the first
+		// a second pass from 3 s to 6 s replaces the points in (3, 6]
+		WritePathPoint(m, 3, 4.5f, -100, 0);
+		WritePathPoint(m, 4.5f, 6, -100, 0);
+		CHECK(m.path.size() == 11 - 3 + 2);
+		m.PositionAt(5, px, py);
+		CHECK(NEAR(px, -100));
+		m.PositionAt(7, px, py);
+		CHECK(NEAR(px, 70));					// later points stay
+		ShiftPath(m, 200, 0);
+		CHECK(m.path.back().x == 256);			// clamped to the floor
+	}
+
 	// latency compensation: earlier by the shift; nothing before 0
 	std::vector<int16_t> takeSamples(44100, 7);
 	float takeStart = 1.0f;

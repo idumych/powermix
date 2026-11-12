@@ -117,6 +117,8 @@ private:
 	BMenuItem* fArmItem;
 	BMenuItem* fClickItem;
 	BMenuItem* fCountInItem;
+	BMenuItem* fMovesItem;
+	BMenuItem* fClearMovesItem;
 	float fCountInSeconds;		// of the take being recorded
 	BRect fClassicTrackFrame;	// the track area's frame in the classic layout
 	float fClassicZoom;

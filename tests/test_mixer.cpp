@@ -75,6 +75,32 @@ static void TestPlacement()
 	CHECK(std::fabs(float(nearL) / farL - 4.0f) < 0.05f);
 }
 
+// Floor automation: the mix follows the path, and a path that holds still
+// mixes exactly as standing there
+static void TestPath()
+{
+	int leftAt, rightAt, left, right;
+	Peaks(ClickProject(-256, 256), leftAt, rightAt, left, right);
+	Project held = ClickProject(0, 0);
+	held.tracks[0].path = {{0, -256, 256}, {2, -256, 256}};
+	int hLeftAt, hRightAt, hLeft, hRight;
+	Peaks(held, hLeftAt, hRightAt, hLeft, hRight);
+	CHECK(hLeft == left && hRight == right && hLeftAt == leftAt && hRightAt == rightAt);
+
+	// right to left over two seconds: at the click (1 s) it's in the middle,
+	// still a little right, since the pan follows smoothly (bi_mix's 31/32
+	// filter, about 0.2 s), and no delay between the ears
+	Project moving = ClickProject(0, 0);
+	moving.tracks[0].path = {{0, 256, 256}, {2, -256, 256}};
+	Peaks(moving, leftAt, rightAt, left, right);
+	CHECK(left > 0 && right > left && right < 2 * left);
+	CHECK(leftAt == rightAt);
+	// arriving on the left well before the click, it's there
+	moving.tracks[0].path = {{0, 256, 256}, {0.3f, -256, 256}};
+	Peaks(moving, leftAt, rightAt, left, right);
+	CHECK(left > 4 * right && rightAt - leftAt == 73);
+}
+
 static void TestMuteSolo()
 {
 	Project project = ClickProject(0, 256);
@@ -139,6 +165,7 @@ static void RenderLynx(const std::string& dir)
 int main(int argc, char** argv)
 {
 	TestPlacement();
+	TestPath();
 	TestMuteSolo();
 	RenderLynx(argc > 1 ? argv[1] : "vm/orig/boot/optional/sound/3D Mixes");
 	printf(sFailures ? "%d FAILED\n" : "all passed\n", sFailures);

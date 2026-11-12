@@ -84,6 +84,13 @@ static void TestFades()
 	CHECK(ReadProject(std::string(dir) + "/f.3dmix", back, &error, nullptr));
 	CHECK(back.tracks.size() == 1 && back.tracks[0].clips.size() == 1);
 	CHECK(back.tracks[0].clips[0].fadeIn == 0.5f && back.tracks[0].clips[0].fadeOut == 0.25f);
+	// a path is saved there too
+	project.tracks[0].path = {{0.5f, -100, 50}, {2.25f, 120, -30}};
+	CHECK(WriteProject(dir, "f.3dmix", project, &error));
+	CHECK(ReadProject(std::string(dir) + "/f.3dmix", back, &error, nullptr));
+	CHECK(back.tracks[0].path.size() == 2 && back.tracks[0].path[1].time == 2.25f
+		&& back.tracks[0].path[1].x == 120 && back.tracks[0].path[0].y == 50);
+	project.tracks[0].path.clear();
 	// without fades the extras file goes away
 	project.tracks[0].clips[0].fadeIn = project.tracks[0].clips[0].fadeOut = 0;
 	CHECK(WriteProject(dir, "f.3dmix", project, &error));

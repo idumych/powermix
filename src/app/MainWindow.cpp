@@ -68,6 +68,8 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 	fArmItem(NULL),
 	fClickItem(NULL),
 	fCountInItem(NULL),
+	fMovesItem(NULL),
+	fClearMovesItem(NULL),
 	fCountInSeconds(0),
 	fClassicZoom(1.0f / 14),
 	fClassicViewStart(0)
@@ -97,6 +99,7 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 		engine);
 	fInner->AddChild(fTrackArea);
 	fMixer->SetSelectionTarget(this);
+	fMixer->SetEditor(fEditor);
 	fTrackArea->SetEditor(fEditor);
 
 	fStatus = new StatusView(BRect(0, 0, 63, 32000), this);
@@ -187,6 +190,11 @@ MainWindow::BuildMenus(BRect& menuFrame)
 		new BMessage(kMsgClick)));
 	menu->AddItem(fCountInItem = new BMenuItem(B_TRANSLATE("Count-in before recording"),
 		new BMessage(kMsgCountIn)));
+	menu->AddSeparatorItem();
+	menu->AddItem(fMovesItem = new BMenuItem(B_TRANSLATE("Record moves"),
+		new BMessage(kMsgRecordMoves)));
+	menu->AddItem(fClearMovesItem = new BMenuItem(B_TRANSLATE("Clear moves of selected tracks"),
+		new BMessage(kMsgClearMoves)));
 	bar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Misc"));
@@ -240,6 +248,15 @@ MainWindow::MenusBeginning()
 	}
 	fArmItem->SetEnabled(anySelected && !fRecord.recording);
 	fClickItem->SetMarked(fSettings.click);
+	fMovesItem->SetMarked(fMixer->RecordMoves());
+	bool selectedPath = false;
+	if (fEngine->Lock()) {
+		const pmx::Project& project = fEngine->Project();
+		for (int i = 0; i < fMixer->Scene().CountTracks() && i < int(project.tracks.size()); i++)
+			selectedPath |= fMixer->Scene().IsSelected(i) && !project.tracks[size_t(i)].path.empty();
+		fEngine->Unlock();
+	}
+	fClearMovesItem->SetEnabled(selectedPath);
 	fCountInItem->SetMarked(fSettings.countIn);
 	fArmItem->SetMarked(armedSelected);
 	fControlsItem->SetEnabled(!fModern);
@@ -971,6 +988,8 @@ MainWindow::RunScript(const char* script)
 						if (c.fadeIn > 0 || c.fadeOut > 0)
 							fades << " fade" << int32(k) << "=" << c.fadeIn << "/" << c.fadeOut;
 					}
+					if (!project.tracks[i].path.empty())
+						fades << " path=" << int32(project.tracks[i].path.size());
 					printf("track %zu name=%s clips=%zu x=%.1f y=%.1f%s\n", i,
 						project.tracks[i].name.c_str(), project.tracks[i].clips.size(),
 						project.tracks[i].x, project.tracks[i].y, fades.String());
@@ -990,6 +1009,41 @@ MainWindow::RunScript(const char* script)
 			BMessage step(verb == "undo" ? kMsgUndo : kMsgRedo);
 			MessageReceived(&step);
 			printf("%s steps=%zu\n", verb.String(), fEditor->UndoSteps());
+		} else if (verb == "moves") {
+			// moves on|off: Record moves
+			fMixer->SetRecordMoves(rest == "on");
+			printf("moves %s\n", rest == "on" ? "on" : "off");
+		} else if (verb == "move") {
+			// move TRACK TIME X Y: a point of the track's path
+			int track = 0;
+			float t = 0, x = 0, y = 0;
+			sscanf(rest.String(), "%d %f %f %f", &track, &t, &x, &y);
+			if (fEngine->Lock()) {
+				pmx::Project& project = fEngine->Project();
+				if (size_t(track) < project.tracks.size())
+					pmx::WritePathPoint(project.tracks[track], t - 0.0001f, t, x, y);
+				fEngine->Unlock();
+			}
+			printf("move done\n");
+		} else if (verb == "wait") {
+			snooze(bigtime_t(atof(rest.String()) * 1000000));
+			printf("wait done\n");
+		} else if (verb == "position") {
+			// position TRACK: where the mix has it now, and the 3D view
+			int track = atoi(rest.String());
+			fMixer->Animate(false);
+			if (fEngine->Lock()) {
+				const pmx::Project& project = fEngine->Project();
+				float px = 0, py = 0, sx = 0, sy = 0;
+				double now = std::max(0.0, fEngine->Mixer().Time() - fEngine->OutputDelay());
+				if (size_t(track) < project.tracks.size())
+					project.tracks[track].PositionAt(now, px, py);
+				fEngine->Unlock();
+				if (track < fMixer->Scene().CountTracks())
+					fMixer->Scene().GetPosition(track, sx, sy);
+				printf("position track=%d time=%.2f path=%.1f,%.1f view=%.1f,%.1f\n", track, now,
+					px, py, sx, sy);
+			}
 		} else if (verb == "click" || verb == "countin") {
 			// click on|off, countin on|off
 			(verb == "click" ? fSettings.click : fSettings.countIn) = rest == "on";
@@ -1264,6 +1318,35 @@ MainWindow::MessageReceived(BMessage* message)
 			else
 				StartRecording();
 			break;
+		case kMsgRecordMoves:
+			fMixer->SetRecordMoves(!fMixer->RecordMoves());
+			SelectionChanged();
+			break;
+		case kMsgClearMoves:
+		{
+			// a track's, or the selected tracks'; they stay where they are now
+			int32 only = -1;
+			message->FindInt32("track", &only);
+			if (!fEngine->Lock())
+				break;
+			pmx::Project& project = fEngine->Project();
+			bool committed = false;
+			for (int i = 0; i < fMixer->Scene().CountTracks() && i < int(project.tracks.size()); i++) {
+				bool chosen = only >= 0 ? i == only : fMixer->Scene().IsSelected(i);
+				pmx::Track& track = project.tracks[size_t(i)];
+				if (!chosen || track.path.empty())
+					continue;
+				if (!committed) {
+					fEditor->Commit();
+					committed = true;
+				}
+				fMixer->Scene().GetPosition(i, track.x, track.y);
+				track.path.clear();
+			}
+			fEngine->Unlock();
+			SelectionChanged();
+			break;
+		}
 		case kMsgClick:
 			fSettings.click = !fSettings.click;
 			break;

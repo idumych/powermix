@@ -48,12 +48,21 @@ including the sample mixes that came with BeOS 5.
   starts over. A click sounds on the ruler's beats while you record, after
   a one-bar count-in (both can be turned off in the Tracks menu), and
   Misc ▸ Recording latency… lines takes up with what you heard. Not on Haiku arm64, which has no Media Kit yet.
+- **Moves** (floor automation, as Ardour automates a mix): turn on Tracks ▸
+  Record moves (or the inspector's button) and drag a track while the mix
+  plays, in the 3D view, with the arrows or on the inspector's floor plan.
+  Its path is written as you go, and moving through a stretch again
+  replaces it. On playback the track follows its path, which the modern
+  look draws on the floor. Without Record moves, dragging a track with a
+  path moves the whole path. Tracks ▸ Clear moves of selected tracks (or
+  the inspector's Clear moves) leaves a track where it is. Saved mixes
+  follow the paths.
 - **The sound editor** (double-click a clip): select, cut, copy, paste, and
   the filters Zero, Change volume, Max volume, Echo, Chorus, Metal, Fade and
   Compress, done as 3dmiX did them.
 
   ![The sound editor on Linux](docs/screenshots/linux-editor.png)
-- **What 3dmiX's files can't hold** (fades) is saved beside the project in
+- **What 3dmiX's files can't hold** (fades, moves) is saved beside the project in
   `<project>.powermix`, so 3dmiX still opens the project without it.
 - **The time ruler** sets the part that loops (and is saved by File ▸ Save
   mix as WAVE); Ticks and the 3/4…7/4 menu set the beat grid, and Misc ▸

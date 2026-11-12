@@ -5,9 +5,13 @@
 
 #include <View.h>
 
+#include <utility>
+#include <vector>
+
 #include "Scene.h"
 
 class AudioEngine;
+namespace pmx { class Editor; }
 class BBitmap;
 class ModernButton;
 
@@ -37,6 +41,17 @@ public:
 	// The selection changed here; the window tells the track view
 	void SetSelectionTarget(BHandler* target) { fSelectionTarget = target; }
 
+	// Floor automation. With Record moves on, moving a track while the mix
+	// plays writes its path; otherwise a track with a path follows it, and
+	// moving the track moves the whole path.
+	void SetEditor(pmx::Editor* editor) { fEditor = editor; }
+	void SetRecordMoves(bool on) { fRecordMoves = on; }
+	bool RecordMoves() const { return fRecordMoves; }
+	// The inspector's floor plan moves a track through these
+	void BeginMove(int track);
+	void MoveTrack(int track, float x, float y);
+	void EndMove();
+
 	// Tracks ▸ (Un)Mute/(Un)Solo Selection, also M and S here
 	void MuteSelection();
 	void SoloSelection();
@@ -57,6 +72,9 @@ private:
 	void ComposeModern();
 	void WritePositions();
 	void SelectionChanged();
+	bool Touched(int track) const;
+	void ShiftPaths(const std::vector<std::pair<float, float> >& before);
+	void CommitForMove(bool selection, int track);
 
 	AudioEngine* fEngine;
 	pmx::Scene fScene;
@@ -76,6 +94,11 @@ private:
 	float fLastPitch, fLastYaw, fPrevPitch, fPrevYaw;
 	bool fMoved;
 	bool fDepthOnly;
+	pmx::Editor* fEditor;
+	bool fRecordMoves;
+	int fMoving;				// the inspector's track; -1: none
+	bool fKeyMove;				// an arrow key is moving the selection
+	float fLastHeard;			// the time WritePositions last saw
 };
 
 #endif

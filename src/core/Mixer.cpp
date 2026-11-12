@@ -112,7 +112,6 @@ void
 Mixer::UpdateChannel(size_t i, int32_t block)
 {
 	Channel& channel = fChannels[i];
-	const Track& track = fProject->tracks[i];
 
 	const int16_t* samples = channel.window.data() + kHistoryFrames + block * kBlockFrames;
 	float sum = 0;
@@ -122,14 +121,14 @@ Mixer::UpdateChannel(size_t i, int32_t block)
 	channel.level = std::max(2.0f, std::min(15.0f, level));
 
 	// Channel::SetLeftRight
-	float pan = 1.0f - (track.x + 256.0f) * 0.001953125f;
+	float pan = 1.0f - (channel.x + 256.0f) * 0.001953125f;
 	float angle = std::max(0.0f, std::min(1.0f, pan * 0.76f + 0.12f)) * 3.1415925f * 0.5f;
 	float s = float(std::sin(double(angle)));
 	float c = float(std::cos(double(angle)));
 	channel.panLeft = s / (s + c);
 	channel.panRight = c / (s + c);
 
-	float distance = std::max(0.0f, (track.y + 150.0f) / 200.0f);
+	float distance = std::max(0.0f, (channel.y + 150.0f) / 200.0f);
 	channel.gain = distance * distance;
 }
 
@@ -171,7 +170,7 @@ Mixer::MixBlock(int32_t block, int16_t* out)
 				channel.smoothLeft = (channel.smoothLeft * 31.0f + channel.panLeft) * 0.03125f;
 				gainRight[i] = channel.gain * channel.smoothRight;
 				gainLeft[i] = channel.gain * channel.smoothLeft;
-				int32_t delay = Trunc(fProject->tracks[i].x / 3.5f);
+				int32_t delay = Trunc(fChannels[i].x / 3.5f);
 				delayLeft[i] = std::max(delay, 0);
 				delayRight[i] = std::max(-delay, 0);
 			}
@@ -200,9 +199,19 @@ Mixer::MixBlock(int32_t block, int16_t* out)
 	fRightLevel = float(sumRight >> 8);
 }
 
+// Each track's place for this block: its path at this time, if it has one
+// (PowerMix's floor automation), else where it stands
+void
+Mixer::PlaceChannels()
+{
+	for (size_t i = 0; i < fChannels.size(); i++)
+		fProject->tracks[i].PositionAt(fTime, fChannels[i].x, fChannels[i].y);
+}
+
 void
 Mixer::SettlePan()
 {
+	PlaceChannels();
 	for (size_t i = 0; i < fChannels.size(); i++) {
 		UpdateChannel(i, 0);
 		fChannels[i].smoothLeft = fChannels[i].panLeft;
@@ -222,6 +231,7 @@ Mixer::NextBlock(int16_t* out)
 		FillWindows();
 		fBlock = 0;
 	}
+	PlaceChannels();
 	for (size_t i = 0; i < fChannels.size(); i++)
 		UpdateChannel(i, fBlock);
 	MixBlock(fBlock, out);

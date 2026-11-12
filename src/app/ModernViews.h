@@ -186,6 +186,8 @@ private:
 	ModernButton* fSolo;
 	ModernButton* fArm;
 	ModernButton* fEdit;
+	ModernButton* fRecordMoves;
+	ModernButton* fClearMoves;
 	const RecordState* fRecord;
 	int fDragging;
 	BString fSignature;

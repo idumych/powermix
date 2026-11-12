@@ -164,6 +164,40 @@ Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 	return wrote;
 }
 
+void
+Track::PositionAt(double time, float& px, float& py) const
+{
+	if (path.empty()) {
+		px = x;
+		py = y;
+		return;
+	}
+	if (time <= path.front().time) {
+		px = path.front().x;
+		py = path.front().y;
+		return;
+	}
+	if (time >= path.back().time) {
+		px = path.back().x;
+		py = path.back().y;
+		return;
+	}
+	// the last point at or before time, and the one after it
+	size_t lo = 0, hi = path.size() - 1;
+	while (hi - lo > 1) {
+		size_t mid = (lo + hi) / 2;
+		if (path[mid].time <= time)
+			lo = mid;
+		else
+			hi = mid;
+	}
+	const PathPoint& a = path[lo];
+	const PathPoint& b = path[hi];
+	const double f = b.time > a.time ? (time - a.time) / (b.time - a.time) : 1;
+	px = float(a.x + (b.x - a.x) * f);
+	py = float(a.y + (b.y - a.y) * f);
+}
+
 // A clip's fades over the frames it wrote: a straight rise from silence at
 // its start and fall to silence at its end. Past the end (3dmiX's quirk can
 // play up to a buffer more) a faded clip is silent.
@@ -442,7 +476,14 @@ ReadExtras(const std::string& path, Project& project)
 		}
 		if (track == NULL)
 			continue;
-		if (fields[0] == "fade" && fields.size() >= 5) {
+		if (fields[0] == "move" && fields.size() >= 5) {
+			PathPoint point = {float(atof(fields[2].c_str())), float(atof(fields[3].c_str())),
+				float(atof(fields[4].c_str()))};
+			point.x = std::max(-kPositionLimit, std::min(kPositionLimit, point.x));
+			point.y = std::max(-kPositionLimit, std::min(kPositionLimit, point.y));
+			if (track->path.empty() || track->path.back().time <= point.time)
+				track->path.push_back(point);
+		} else if (fields[0] == "fade" && fields.size() >= 5) {
 			size_t index = size_t(atol(fields[2].c_str()));
 			if (index < track->clips.size()) {
 				track->clips[index].fadeIn = std::max(0.0f, float(atof(fields[3].c_str())));
@@ -466,6 +507,10 @@ WriteExtras(const std::string& path, const Project& project)
 				continue;
 			snprintf(line, sizeof(line), "\t%zu\t%.6f\t%.6f\n", k, clip.fadeIn, clip.fadeOut);
 			text += "fade\t" + track.name + line;
+		}
+		for (const PathPoint& point : track.path) {
+			snprintf(line, sizeof(line), "\t%.4f\t%.2f\t%.2f\n", point.time, point.x, point.y);
+			text += "move\t" + track.name + line;
 		}
 	}
 	// nothing 3dmiX can't hold: no file (an old one would be stale)

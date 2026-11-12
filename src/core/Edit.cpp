@@ -286,6 +286,29 @@ AlignTake(float& start, std::vector<int16_t>& samples, float shift)
 }
 
 void
+WritePathPoint(Track& track, float since, float time, float x, float y)
+{
+	std::vector<PathPoint>& path = track.path;
+	auto first = std::upper_bound(path.begin(), path.end(), since,
+		[](float t, const PathPoint& p) { return t < p.time; });
+	auto last = std::upper_bound(first, path.end(), time,
+		[](float t, const PathPoint& p) { return t < p.time; });
+	auto at = path.erase(first, last);
+	PathPoint point = {time, std::max(-kPositionLimit, std::min(kPositionLimit, x)),
+		std::max(-kPositionLimit, std::min(kPositionLimit, y))};
+	path.insert(at, point);
+}
+
+void
+ShiftPath(Track& track, float dx, float dy)
+{
+	for (PathPoint& point : track.path) {
+		point.x = std::max(-kPositionLimit, std::min(kPositionLimit, point.x + dx));
+		point.y = std::max(-kPositionLimit, std::min(kPositionLimit, point.y + dy));
+	}
+}
+
+void
 SetClipFades(Clip& clip, float in, float out)
 {
 	const float length = ClipLength(clip);

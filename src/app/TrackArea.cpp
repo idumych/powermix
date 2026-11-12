@@ -18,6 +18,7 @@
 
 #include "AudioEngine.h"
 #include "Edit.h"
+#include "Effects.h"
 #include "Palette.h"
 #include "PowerMix.h"
 
@@ -665,6 +666,26 @@ public:
 
 	virtual void MouseUp(BPoint where)
 	{
+		// TrackObject::SetLength: Shift resamples the sound to the new
+		// length (pitch_down_soft), Option stretches it (compress_soft)
+		uint32 keys = modifiers();
+		if (fDrag == kTrimEnd && (keys & (B_SHIFT_KEY | B_OPTION_KEY)) != 0
+			&& fArea->fEngine->Lock()) {
+			pmx::Project& project = fArea->fEngine->Project();
+			if (fDragClip.first < project.tracks.size()
+				&& fDragClip.second < project.tracks[fDragClip.first].clips.size()) {
+				pmx::Clip& clip = project.tracks[fDragClip.first].clips[fDragClip.second];
+				double factor = pmx::ClipLength(clip) / std::max(0.01f, pmx::SoundLength(fOriginal));
+				clip.samples = (keys & B_SHIFT_KEY) != 0
+					? pmx::Resample(fOriginal.samples, factor)
+					: pmx::TimeStretch(fOriginal.samples, factor);
+				clip.loopIn = 0;
+				clip.loopOut = pmx::SoundLength(clip);
+				pmx::SetClipLength(clip, pmx::SoundLength(clip), 0);
+				pmx::RedoTime(project.tracks[fDragClip.first]);
+			}
+			fArea->fEngine->Unlock();
+		}
 		if (fDrag != kNoDrag)
 			Window()->PostMessage(kMsgClipsChanged);
 		fDrag = kNoDrag;

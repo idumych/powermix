@@ -21,6 +21,7 @@
 
 #include "AudioEngine.h"
 #include "BeatWindow.h"
+#include "EditWindow.h"
 #include "Edit.h"
 #include "Importer.h"
 #include "MixerView.h"
@@ -683,6 +684,34 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgShowHideBeatMarks:
 			fTrackArea->SetBeatMarks(!fTrackArea->BeatMarks());
 			break;
+		case kMsgEditClip:
+		{
+			// SimpleObject::Edit: one editor per clip, brought forward if open
+			int32 track, clip;
+			if (message->FindInt32("track", &track) != B_OK
+				|| message->FindInt32("clip", &clip) != B_OK)
+				break;
+			bool found = false;
+			for (BMessenger& editor : fEditors) {
+				BLooper* looper = NULL;
+				editor.Target(&looper);
+				EditWindow* window = dynamic_cast<EditWindow*>(looper);
+				if (editor.IsValid() && window != NULL && window->Lock()) {
+					if (window->Edits(size_t(track), size_t(clip))) {
+						window->Activate();
+						found = true;
+					}
+					window->Unlock();
+				}
+			}
+			if (!found) {
+				EditWindow* window = new EditWindow(fEngine, size_t(track), size_t(clip),
+					BMessenger(this));
+				fEditors.push_back(BMessenger(window));
+				window->Show();
+			}
+			break;
+		}
 		case kMsgDropRefs:
 			DropRefs(message);
 			break;

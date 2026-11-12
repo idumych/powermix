@@ -2,7 +2,10 @@
 #ifndef POWERMIX_MAIN_WINDOW_H
 #define POWERMIX_MAIN_WINDOW_H
 
+#include <Messenger.h>
 #include <String.h>
+
+#include <vector>
 #include <Window.h>
 
 class AudioEngine;
@@ -59,6 +62,7 @@ private:
 	BMenuItem* fCopyItem;
 	BMenuItem* fPasteItem;
 	pmx::Editor* fEditor;
+	std::vector<BMessenger> fEditors;
 	bool fMixerShown;		// 0x190
 	bool fControlsShown;	// 0x194
 	BString fProjectFolder;

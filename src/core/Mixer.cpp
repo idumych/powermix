@@ -200,6 +200,16 @@ Mixer::MixBlock(int32_t block, int16_t* out)
 	fRightLevel = float(sumRight >> 8);
 }
 
+void
+Mixer::SettlePan()
+{
+	for (size_t i = 0; i < fChannels.size(); i++) {
+		UpdateChannel(i, 0);
+		fChannels[i].smoothLeft = fChannels[i].panLeft;
+		fChannels[i].smoothRight = fChannels[i].panRight;
+	}
+}
+
 bool
 Mixer::NextBlock(int16_t* out)
 {

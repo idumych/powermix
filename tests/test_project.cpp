@@ -26,7 +26,9 @@ static void TestClipLoop()
 	clip.start = 1.0f;
 	clip.end = 2.0f;
 	clip.loopIn = 0;
-	clip.loopOut = 4.0f / kSampleRate;	// a 4-frame loop
+	// a 4-frame loop (4 / 44100 itself is 3.99999 as a float, which
+	// truncates to 3 frames as in 3dmiX)
+	clip.loopOut = 4.5f / kSampleRate;
 	clip.samples = {1, 2, 3, 4, 5, 6};
 	int16_t out[10] = {};
 	CHECK(clip.GetData(out, 2, 10));

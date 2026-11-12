@@ -143,3 +143,23 @@ out of the public tree.
   fountains, W back to the tracks. Command-drag = vertical_move (visual
   height only; Channel's reverb level is always 0). The transport panels
   (composit_pannel1/2) are empty in this build.
+
+## Audio compared with the original's export
+
+- 3dmiX's File ▸ Save Mix As WAVE (the-lynx, master at 50, nothing moved)
+  exported in the VM: vm/orig/export/lynx-orig.wav. Its 44-byte header is
+  written over the first 11 frames of audio (the file is exactly frames x 4
+  bytes and its data chunk claims 44 bytes more than exist): a 3dmiX bug.
+  PowerMix writes a correct file.
+- tools/host/render_mix renders the same mix with the core. With the
+  11-frame offset, 46% of the samples are identical: about half of the
+  5120-frame mixing windows match sample for sample, so the mix maths
+  (gain, pan law, interaural delay, smoothing, clip playback) is exact.
+  In the others the original is about a frame off around some window
+  refills (it repeats or swaps a frame at the boundary); per-channel RMS
+  agrees to 0.02%. Not found: window start (+-1) and track gains don't
+  explain it.
+- Precision matters: the x87 computes in long double and rounds only when
+  storing a float; TrackObject's start/end/loop fields are doubles. Doing
+  (clip start - window start) x 44100 in float placed clips a frame off.
+- The end-of-clip test in GetData is strictly `left < n`.

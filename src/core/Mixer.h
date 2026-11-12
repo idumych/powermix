@@ -51,6 +51,10 @@ public:
 	bool NextBlock(int16_t* out);
 	// For "Save Mix As WAVE": play the range once, then NextBlock() stops.
 	void SetLoop(bool loop) { fLoop = loop; }
+	// The pan filter starts at 0.5 (TSoundView's constructor) and follows
+	// the tracks' places from then on. An export from a mixer that has been
+	// playing starts settled; this does that for a fresh one.
+	void SettlePan();
 
 	// The last block's levels: per track (SetChannelLevel's argument
 	// before it's divided by -11: 2..15) and the output's sum of |sample|
@@ -64,7 +68,7 @@ private:
 		std::vector<int16_t> window;	// kHistoryFrames + kWindowBlocks blocks
 		bool playing = false;			// fill_buffer found data
 		float panLeft = 0.5f, panRight = 0.5f;		// Channel::SetLeftRight
-		float smoothLeft = 0, smoothRight = 0;		// bi_mix's 31/32 filter
+		float smoothLeft = 0.5f, smoothRight = 0.5f;	// bi_mix's 31/32 filter
 		float gain = 0;
 		float level = 2;
 		bool muted = false, soloed = false;

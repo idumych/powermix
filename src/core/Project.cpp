@@ -120,25 +120,29 @@ void SetError(std::string* error, const std::string& message)
 
 // #pragma mark - Playback
 
+// The arithmetic follows the original's x87 evaluation: long double
+// intermediates, rounded where 3dmiX stores into a float. TrackObject
+// keeps start, end, loop in and out as doubles.
 bool
 Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 {
-	const int32_t loopStart = Trunc(loopIn * kSampleRate);
-	const int32_t loopLength = std::max(0, Trunc(loopOut * kSampleRate) - loopStart);
+	const long double rate = kSampleRate;
+	const int32_t loopStart = int32_t((long double)loopIn * rate);
+	const int32_t loopLength = std::max(0, int32_t((long double)loopOut * rate) - loopStart);
 	const int32_t available = int32_t(samples.size()) - loopStart;
 	if (loopLength == 0)
 		return false;	// the original divides by zero here
 
 	bool wrote = false;
 	int32_t phase = offset % loopLength;
-	float time = start + float(phase) / kSampleRate;
+	float time = float((long double)start + (long double)phase / rate);
 	while (count > 0) {
 		int32_t n;
 		if (phase < available) {
 			n = std::min({count, loopLength - phase, available - phase});
 			bool last = false;
-			float left = (end - time) * kSampleRate;
-			if (left <= float(n)) {
+			float left = float(((long double)end - time) * 44100.0L);
+			if (left < float(n)) {
 				n = std::max(0, Trunc(left));
 				last = true;
 			}
@@ -149,7 +153,7 @@ Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 				return true;
 		} else
 			n = std::min(count, loopLength - phase);
-		time += float(n) / kSampleRate;
+		time = float((long double)n / 44100.0L + time);
 		count -= n;
 		phase += n;
 		out += n;
@@ -162,14 +166,14 @@ Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 bool
 Track::Fill(int16_t* out, int32_t count, int32_t at) const
 {
-	const float from = float(at) / kSampleRate;
-	const float to = float(at + count) / kSampleRate;
+	const float from = float((long double)float(at) / 44100.0L);
+	const float to = float((long double)float(at + count) / 44100.0L);
 	memset(out, 0, count * sizeof(int16_t));
 	bool played = false;
 	for (const Clip& clip : clips) {
 		if (!(clip.start <= to && from <= clip.end))
 			continue;
-		int32_t delay = Trunc((clip.start - from) * kSampleRate);
+		int32_t delay = int32_t(((long double)clip.start - from) * 44100.0L);
 		if (delay < 0)
 			played |= clip.GetData(out, -delay, count);
 		else if (delay < count)

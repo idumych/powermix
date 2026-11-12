@@ -49,6 +49,7 @@ private:
 	BMenuItem* fSaveAsItem;
 	BMenuItem* fSaveWaveItem;
 	BMenuItem* fPauseItem;
+	BMenuItem* fFastItem;
 	bool fMixerShown;		// 0x190
 	bool fControlsShown;	// 0x194
 	BString fProjectFolder;

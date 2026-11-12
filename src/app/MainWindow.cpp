@@ -117,7 +117,8 @@ MainWindow::BuildMenus(BRect& menuFrame)
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Show/hide beat marks"),
 		new BMessage(kMsgShowHideBeatMarks), 'B'));
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Fast display"), new BMessage(kMsgFastDisplay)));
+	menu->AddItem(fFastItem = new BMenuItem(B_TRANSLATE("Fast display"),
+		new BMessage(kMsgFastDisplay)));
 	bar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Tracks"));
@@ -158,6 +159,7 @@ MainWindow::MenusBeginning()
 	fSaveAsItem->SetEnabled(haveProject);
 	fSaveWaveItem->SetEnabled(haveProject);
 	fPauseItem->SetMarked(fEngine->IsPaused());
+	fFastItem->SetMarked(fTrackArea->FastDisplay());
 }
 
 // TWaveWindow::Switch: slides the 3D view down over the tracks (or back
@@ -200,8 +202,12 @@ MainWindow::SwitchControls()
 	if (fControlsShown)
 		fOuter->ResizeBy(kStripWidth, 0);
 	const float direction = fControlsShown ? 1 : -1;
+	float angle = fControlsShown ? 0 : 3.1415925f;
+	const float turn = fControlsShown ? 0.07853981f : -0.07853981f;
 	do {
 		bigtime_t start = system_time();
+		angle += turn;
+		fTrackArea->SetControlsRotation(angle);
 		fOuter->ScrollBy(direction * int32(step), 0);
 		UpdateIfNeeded();
 		fOuter->Sync();
@@ -214,6 +220,16 @@ MainWindow::SwitchControls()
 		fOuter->ResizeBy(-kStripWidth, 0);
 	UpdateIfNeeded();
 	fControlsShown = !fControlsShown;
+	// then the triangle finishes turning, faster while the mixer shows
+	const float target = fControlsShown ? 0 : 3.1415925f;
+	const float rest = (fMixerShown ? 0.15707962f : 0.07853981f) * (fControlsShown ? -1 : 1);
+	while (fControlsShown ? angle > target : angle < target) {
+		angle += rest;
+		fTrackArea->SetControlsRotation(angle);
+		UpdateIfNeeded();
+		snooze(10000);
+	}
+	fTrackArea->SetControlsRotation(target);
 }
 
 void
@@ -429,9 +445,18 @@ MainWindow::MessageReceived(BMessage* message)
 			fMixer->SoloSelection();
 			break;
 		case kMsgSelectAllTracks:
+		{
 			fMixer->Scene().SelectAll();
+			BMessage selection(kMsgMixerSelection);
+			for (int i = 0; i < fMixer->Scene().CountTracks(); i++)
+				selection.AddInt32("track", i);
+			fTrackArea->SetSelection(selection);
 			break;
+		}
 
+		case kMsgFastDisplay:
+			fTrackArea->SetFastDisplay(!fTrackArea->FastDisplay());
+			break;
 		case kMsgPause:
 			fEngine->SetPaused(!fEngine->IsPaused());
 			break;
@@ -449,8 +474,17 @@ MainWindow::MessageReceived(BMessage* message)
 			fTrackArea->SetSelection(*message);
 			break;
 		case kMsgMuteSoloChanged:
-			fTrackArea->Invalidate();
+			fTrackArea->RedrawLanes();
 			break;
+		case kMsgTrackSelection:
+		{
+			pmx::Scene& scene = fMixer->Scene();
+			scene.DeselectAll();
+			int32 track;
+			for (int32 i = 0; message->FindInt32("track", i, &track) == B_OK; i++)
+				scene.Select(track, true);
+			break;
+		}
 
 		default:
 			BWindow::MessageReceived(message);

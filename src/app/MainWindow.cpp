@@ -1581,10 +1581,13 @@ MainWindow::MessageReceived(BMessage* message)
 			if (message->FindFloat("value", &value) == B_OK && fEngine->Lock()) {
 				fEngine->Mixer().SetMasterGain(pmx::MasterGainForSlider(value));
 				fEngine->Unlock();
-				// both looks' sliders follow
+				// the other look's slider follows, quietly; the one that sent it
+				// is never set back (during a drag these messages come late,
+				// and the knob jumped back to where it had been)
 				fMasterValue = value;
-				fStatus->Slider()->SetValue(value);
-				if (fToolbar != NULL)
+				if (message->GetBool("toolbar", false))
+					fStatus->Slider()->SetValue(value, false);
+				else if (fToolbar != NULL)
 					fToolbar->SetMaster(value);
 			}
 			break;

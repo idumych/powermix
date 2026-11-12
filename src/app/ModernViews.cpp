@@ -402,53 +402,25 @@ BufferedView::Draw(BRect updateRect)
 
 // The beat grid's Ticks as a number to drag up or down (or scroll); Shift
 // for tenths
-class ValueField : public BView {
+class ValueField : public BufferedView {
 public:
 	ValueField(BRect frame)
 		:
-		BView(frame, "ticks", B_FOLLOW_LEFT | B_FOLLOW_TOP, B_WILL_DRAW),
+		BufferedView(frame, "ticks", B_FOLLOW_LEFT | B_FOLLOW_TOP),
 		fValue(0),
 		fTracking(false),
 		fLast(0)
 	{
-		SetViewColor(B_TRANSPARENT_COLOR);
 	}
 
+	// From the window: ignored while it's being dragged, when it holds the
+	// value and the window's are late
 	void SetValue(float value)
 	{
-		if (value == fValue)
+		if (fTracking || value == fValue)
 			return;
 		fValue = value;
 		Invalidate();
-	}
-
-	virtual void Draw(BRect updateRect)
-	{
-		BRect b = Bounds();
-		SetHighColor(kPanel);
-		FillRect(b);
-		FillRound(this, b, 6, fTracking ? kAccentDim : kRaised);
-		StrokeRound(this, b, 6, fTracking ? kAccentLine : kBorder);
-		BString text;
-		if (fValue <= 0)
-			text = "–";
-		else if (fabsf(fValue - roundf(fValue)) < 0.05f)
-			text.SetToFormat("%d", int(roundf(fValue)));
-		else
-			text.SetToFormat("%.1f", fValue);
-		UseFont(this, be_fixed_font, 12);
-		font_height fh;
-		GetFontHeight(&fh);
-		SetHighColor(kText);
-		SetDrawingMode(B_OP_OVER);
-		DrawString(text.String(), BPoint(9, floorf((b.Height() + fh.ascent - fh.descent) / 2)));
-		// up and down marks: it can be dragged
-		SetHighColor(kMuted);
-		float x = b.right - 10;
-		FillTriangle(BPoint(x - 3, 11), BPoint(x + 3, 11), BPoint(x, 7));
-		FillTriangle(BPoint(x - 3, b.bottom - 11), BPoint(x + 3, b.bottom - 11),
-			BPoint(x, b.bottom - 7));
-		SetDrawingMode(B_OP_COPY);
 	}
 
 	virtual void MouseDown(BPoint where)
@@ -484,7 +456,37 @@ public:
 			Change(-delta * ((modifiers() & B_SHIFT_KEY) != 0 ? 0.1f : 1.0f));
 			return;
 		}
-		BView::MessageReceived(message);
+		BufferedView::MessageReceived(message);
+	}
+
+protected:
+	virtual void DrawContent(BView* v, BRect b)
+	{
+		v->SetHighColor(kPanel);
+		v->FillRect(b);
+		v->SetDrawingMode(B_OP_ALPHA);
+		FillRound(v, b, 6, fTracking ? kAccentDim : kRaised);
+		StrokeRound(v, b, 6, fTracking ? kAccentLine : kBorder);
+		BString text;
+		if (fValue <= 0)
+			text = "–";
+		else if (fabsf(fValue - roundf(fValue)) < 0.05f)
+			text.SetToFormat("%d", int(roundf(fValue)));
+		else
+			text.SetToFormat("%.1f", fValue);
+		UseFont(v, be_fixed_font, 12);
+		font_height fh;
+		v->GetFontHeight(&fh);
+		v->SetHighColor(kText);
+		v->SetDrawingMode(B_OP_OVER);
+		v->DrawString(text.String(), BPoint(9, floorf((b.Height() + fh.ascent - fh.descent) / 2)));
+		// up and down marks: it can be dragged
+		v->SetHighColor(kMuted);
+		float x = b.right - 10;
+		v->FillTriangle(BPoint(x - 3, 11), BPoint(x + 3, 11), BPoint(x, 7));
+		v->FillTriangle(BPoint(x - 3, b.bottom - 11), BPoint(x + 3, b.bottom - 11),
+			BPoint(x, b.bottom - 7));
+		v->SetDrawingMode(B_OP_COPY);
 	}
 
 private:
@@ -493,7 +495,8 @@ private:
 		float value = std::max(1.0f, std::min(2000.0f, roundf((fValue + by) * 10) / 10));
 		if (value == fValue)
 			return;
-		SetValue(value);
+		fValue = value;
+		Invalidate();
 		BMessage message(kMsgSetTicks);
 		message.AddFloat("ticks", value);
 		Window()->PostMessage(&message);
@@ -507,37 +510,25 @@ private:
 // #pragma mark - MasterBar
 
 // The master volume across: full at the right. Its value is the classic
-// slider's, 0 (full) to 100 (silent).
-class MasterBar : public BView {
+// slider's, 0 (full) to 100 (silent). Drawn offscreen, so the knob doesn't
+// flicker half-drawn while it's dragged.
+class MasterBar : public BufferedView {
 public:
 	MasterBar(BRect frame)
 		:
-		BView(frame, "master", B_FOLLOW_RIGHT | B_FOLLOW_TOP, B_WILL_DRAW),
+		BufferedView(frame, "master", B_FOLLOW_RIGHT | B_FOLLOW_TOP),
 		fValue(0),
 		fTracking(false)
 	{
-		SetViewColor(B_TRANSPARENT_COLOR);
 	}
 
+	// From the window: ignored while it's being dragged (see ValueField)
 	void SetValue(float value)
 	{
-		if (value == fValue)
+		if (fTracking || value == fValue)
 			return;
 		fValue = value;
 		Invalidate();
-	}
-
-	virtual void Draw(BRect updateRect)
-	{
-		BRect b = Bounds();
-		SetHighColor(kPanel);
-		FillRect(b);
-		const float mid = floorf(b.Height() / 2);
-		const float x = ThumbX();
-		FillRound(this, BRect(7, mid - 2, b.right - 7, mid + 2), 2, kLine);
-		FillRound(this, BRect(7, mid - 2, x, mid + 2), 2, kAccent);
-		SetHighColor(kText);
-		FillEllipse(BPoint(x, mid), 6, 6);
 	}
 
 	virtual void MouseDown(BPoint where)
@@ -556,15 +547,32 @@ public:
 		float value = roundf((1 - f) * 100);
 		if (value == fValue)
 			return;
-		SetValue(value);
+		fValue = value;
+		Invalidate();
 		BMessage message(kMsgMasterChanged);
 		message.AddFloat("value", value);
+		message.AddBool("toolbar", true);
 		Window()->PostMessage(&message);
 	}
 
 	virtual void MouseUp(BPoint where)
 	{
 		fTracking = false;
+	}
+
+protected:
+	virtual void DrawContent(BView* v, BRect b)
+	{
+		v->SetHighColor(kPanel);
+		v->FillRect(b);
+		v->SetDrawingMode(B_OP_ALPHA);
+		const float mid = floorf(b.Height() / 2);
+		const float x = ThumbX();
+		FillRound(v, BRect(7, mid - 2, b.right - 7, mid + 2), 2, kLine);
+		FillRound(v, BRect(7, mid - 2, x, mid + 2), 2, kAccent);
+		v->SetHighColor(kText);
+		v->FillEllipse(BPoint(x, mid), 6, 6);
+		v->SetDrawingMode(B_OP_COPY);
 	}
 
 private:

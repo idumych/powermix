@@ -17,7 +17,9 @@ public:
 
 	// 0 (top, "100%") to 100 (bottom, "0%"), as TSlider's value
 	float Value() const { return fValue; }
-	void SetValue(float value);
+	// notify: tell the target (not when it's following the other look's
+	// slider, which would send the value back)
+	void SetValue(float value, bool notify = true);
 
 private:
 	float ThumbY() const;

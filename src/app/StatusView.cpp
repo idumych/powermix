@@ -30,7 +30,7 @@ MasterSlider::ThumbY() const
 }
 
 void
-MasterSlider::SetValue(float value)
+MasterSlider::SetValue(float value, bool notify)
 {
 	if (value < 0)
 		value = 0;
@@ -40,7 +40,7 @@ MasterSlider::SetValue(float value)
 		return;
 	fValue = value;
 	Invalidate();
-	if (fTarget != NULL && Looper() != NULL) {
+	if (notify && fTarget != NULL && Looper() != NULL) {
 		BMessage message(kMsgMasterChanged);
 		message.AddFloat("value", fValue);
 		Looper()->PostMessage(&message, fTarget);

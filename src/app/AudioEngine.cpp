@@ -16,6 +16,7 @@ AudioEngine::AudioEngine()
 	fClockRunning(false),
 	fBlockUsed(pmx::kBlockFrames),
 	fPaused(false),
+	fAbout(NULL),
 	fLeftLevel(0),
 	fRightLevel(0)
 {
@@ -24,6 +25,27 @@ AudioEngine::AudioEngine()
 AudioEngine::~AudioEngine()
 {
 	Stop();
+	delete fAbout;
+}
+
+void
+AudioEngine::StartAbout()
+{
+	if (!fLock.Lock())
+		return;
+	delete fAbout;
+	fAbout = new pmx::AboutSound(unsigned(system_time()));
+	fLock.Unlock();
+}
+
+void
+AudioEngine::FadeOutAbout()
+{
+	if (fLock.Lock()) {
+		if (fAbout != NULL)
+			fAbout->FadeOut();
+		fLock.Unlock();
+	}
 }
 
 status_t
@@ -97,6 +119,13 @@ AudioEngine::Fill(int16* out, size_t frames)
 			if (fPaused || !fLock.Lock()) {
 				memset(fBlock, 0, sizeof(fBlock));
 				fLeftLevel = fRightLevel = 0;
+			} else if (fAbout != NULL) {
+				fAbout->NextBlock(fBlock);
+				if (fAbout->Finished()) {
+					delete fAbout;
+					fAbout = NULL;
+				}
+				fLock.Unlock();
 			} else {
 				fMixer.NextBlock(fBlock);
 				fLeftLevel = fMixer.LeftLevel();

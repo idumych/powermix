@@ -1,4 +1,5 @@
 // Host tests for src/core/Effects.
+#include "AboutSound.h"
 #include "Effects.h"
 
 #include <cmath>
@@ -82,6 +83,21 @@ int main()
 
 	CHECK(Resample(Sine(1000, 1000), 2).size() == 2000);
 	CHECK(TimeStretch(Sine(10000, 1000), 0.5).size() == 5000);
+
+	// the About sound: never silent while open, fades out after
+	AboutSound about;
+	int16_t block[1024];
+	int loud = 0;
+	for (int i = 0; i < 400; i++) {
+		about.NextBlock(block);
+		for (int16_t v : block)
+			loud = std::max(loud, std::abs(int(v)));
+	}
+	CHECK(loud > 1000);
+	about.FadeOut();
+	for (int i = 0; i < 400 && !about.Finished(); i++)
+		about.NextBlock(block);
+	CHECK(about.Finished());
 
 	printf(sFailures ? "%d FAILED\n" : "all passed\n", sFailures);
 	return sFailures ? 1 : 0;

@@ -1,16 +1,13 @@
 // App.cpp: PowerMix, a clone of BeOS R5's 3dmiX (TSoundApplication).
-#if __has_include(<AboutWindow.h>)
-#	include <AboutWindow.h>
-#else
-	// Haiku R1/beta6 has BAboutWindow in libbe with a private header.
-#	include <private/interface/AboutWindow.h>
-#endif
 #include <Application.h>
+#include <Messenger.h>
+#include <Window.h>
 #include <Catalog.h>
 #include <Entry.h>
 #include <Path.h>
 #include <Screen.h>
 
+#include "AboutWindow.h"
 #include "AudioEngine.h"
 #include "MainWindow.h"
 #include "PowerMix.h"
@@ -31,6 +28,7 @@ public:
 private:
 	AudioEngine fEngine;
 	MainWindow* fWindow;
+	BMessenger fAbout;
 };
 
 App::App()
@@ -85,14 +83,22 @@ App::RefsReceived(BMessage* message)
 	fWindow->PostMessage(message);
 }
 
+// File ▸ About PowerMix: in 3dmiX's manner, an animated window with its
+// own sound (do_about); one at a time
 void
 App::AboutRequested()
 {
-	BAboutWindow* about = new BAboutWindow("PowerMix", APP_SIGNATURE);
-	about->AddDescription(B_TRANSLATE(
-		"A 3D sound mixer in the spirit of 3dmiX, the mixer that came with BeOS 5."));
-	about->AddCopyright(2026, "the PowerMix authors");
-	about->Show();
+	if (fAbout.IsValid()) {
+		BLooper* looper;
+		fAbout.Target(&looper);
+		if (BWindow* window = dynamic_cast<BWindow*>(looper)) {
+			window->Activate();
+			return;
+		}
+	}
+	PowerMixAboutWindow* window = new PowerMixAboutWindow(&fEngine);
+	fAbout = BMessenger(window);
+	window->Show();
 }
 
 int

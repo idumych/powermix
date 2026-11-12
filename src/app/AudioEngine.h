@@ -6,6 +6,7 @@
 #include <Locker.h>
 #include <MediaDefs.h>
 
+#include "AboutSound.h"
 #include "Mixer.h"
 #include "Project.h"
 
@@ -29,6 +30,11 @@ public:
 	void SetPaused(bool paused);
 	bool IsPaused() const { return fPaused; }
 
+	// The About window's sound replaces the mix while it plays (3dmiX's
+	// about_producer); it fades out after FadeOutAbout()
+	void StartAbout();
+	void FadeOutAbout();
+
 	// Levels of the last block for the meters, read without the lock
 	float LeftLevel() const { return fLeftLevel; }
 	float RightLevel() const { return fRightLevel; }
@@ -48,6 +54,7 @@ private:
 	int16 fBlock[2 * pmx::kBlockFrames];
 	int32 fBlockUsed;
 	bool fPaused;
+	pmx::AboutSound* fAbout;
 	float fLeftLevel, fRightLevel;
 };
 

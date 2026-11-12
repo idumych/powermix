@@ -23,7 +23,7 @@ UNAME    := $(shell uname -s)
 COSMOE_ROOT ?= /usr
 
 # All .cpp files, with their directories. Header dirs go in INCLUDES.
-CORE_SRCS := src/core/Project.cpp src/core/Mixer.cpp src/core/Palette.cpp src/core/Scene.cpp src/core/WaveFile.cpp src/core/Edit.cpp src/core/WaveReader.cpp src/core/Effects.cpp
+CORE_SRCS := src/core/Project.cpp src/core/Mixer.cpp src/core/Palette.cpp src/core/Scene.cpp src/core/WaveFile.cpp src/core/Edit.cpp src/core/WaveReader.cpp src/core/Effects.cpp src/core/AboutSound.cpp
 SRCS     := $(CORE_SRCS) $(wildcard src/app/*.cpp)
 INCLUDES := src/core src/app
 # Libraries beyond the Haiku API (same on every platform), e.g. -lsqlite3 -lcrypto.

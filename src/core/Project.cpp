@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <climits>
+#include <unistd.h>
 #include <cstring>
 #include <algorithm>
 
@@ -347,9 +349,64 @@ WriteTrack(const std::string& path, const Track& track, std::string* error)
 }
 
 bool
-ReadProject(const std::string& path, Project& project, std::string* error,
+ResolveProjectPath(const std::string& path, std::string& resolved, std::string* error)
+{
+	std::string current = path;
+	for (int depth = 0; depth < 8; depth++) {
+		char real[PATH_MAX];
+		if (realpath(current.c_str(), real) == NULL) {
+			// a link to nothing: say where it points
+			char target[PATH_MAX];
+			ssize_t length = readlink(current.c_str(), target, sizeof(target) - 1);
+			if (length > 0) {
+				target[length] = '\0';
+				SetError(error, current + " is a link to " + target + ", which isn't there");
+			} else
+				SetError(error, "Can't open " + current);
+			return false;
+		}
+		FILE* file = fopen(real, "rb");
+		if (file == NULL) {
+			SetError(error, "Can't open " + current);
+			return false;
+		}
+		char head[1025];
+		size_t size = fread(head, 1, sizeof(head) - 1, file);
+		bool more = fgetc(file) != EOF;
+		fclose(file);
+		if (size >= 4 && memcmp(head, "MAST", 4) == 0) {
+			resolved = real;
+			return true;
+		}
+		// a short line of text naming a file: a flattened link
+		head[size] = '\0';
+		bool text = !more && size > 0 && strlen(head) == size;
+		for (size_t i = 0; text && i < size; i++)
+			text = head[i] >= ' ' || head[i] == '\n' || head[i] == '\r';
+		std::string named = text ? std::string(head) : std::string();
+		while (!named.empty() && (named.back() == '\n' || named.back() == '\r' || named.back() == ' '))
+			named.pop_back();
+		if (named.empty() || named.find('\n') != std::string::npos) {
+			SetError(error, path + " is not a 3dmiX project");
+			return false;
+		}
+		current = named[0] == '/' ? named : Parent(real) + "/" + named;
+		if (access(current.c_str(), R_OK) != 0) {
+			SetError(error, path + " is not a 3dmiX project");
+			return false;
+		}
+	}
+	SetError(error, path + " leads through too many links");
+	return false;
+}
+
+bool
+ReadProject(const std::string& givenPath, Project& project, std::string* error,
 	std::vector<std::string>* skipped)
 {
+	std::string path;
+	if (!ResolveProjectPath(givenPath, path, error))
+		return false;
 	File file(path, "rb");
 	if (!file.IsOpen()) {
 		SetError(error, "Can't open " + path);

@@ -89,7 +89,9 @@ On purpose:
 - Haiku's conventions: menu items in sentence case with "…", Quit has a
   shortcut (Alt-Q, Ctrl-Q on Linux), the window is titled PowerMix.
 - Links to projects are followed (3dmiX opened the BeOS samples' links as
-  empty projects).
+  empty projects), and so are links that copying through zip, a FAT or
+  NTFS volume or Windows turned into small files holding their target's
+  path. A link to nothing says where it pointed.
 - A saved mix is a correct WAVE file (3dmiX's header overwrote its first
   11 frames).
 - Without an audio output the mix still runs, silently (3dmiX stopped).

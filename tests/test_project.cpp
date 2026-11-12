@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -100,6 +101,67 @@ static void TestFades()
 	rmdir(dir);
 }
 
+// Opening through links: a working one, one flattened into a file holding
+// its target's path (as copying through zip or FAT leaves it), a broken one,
+// and a file that's neither
+static void TestLinks(const std::string& mixes)
+{
+	char dir[] = "/tmp/pmx-links-XXXXXX";
+	CHECK(mkdtemp(dir) != NULL);
+	const std::string d = dir;
+	CHECK(mkdir((d + "/mix").c_str(), 0755) == 0);
+	Project project;
+	Track track;
+	track.name = "t1";
+	Clip clip;
+	clip.end = clip.loopOut = 0.1f;
+	clip.samples.assign(4410, 1);
+	track.clips.push_back(clip);
+	project.tracks.push_back(track);
+	std::string error;
+	CHECK(WriteProject(d + "/mix", "song.3dmix", project, &error));
+
+	// a link elsewhere: the track files are found beside the project
+	CHECK(symlink("mix/song.3dmix", (d + "/song.3dmix").c_str()) == 0);
+	Project back;
+	CHECK(ReadProject(d + "/song.3dmix", back, &error, nullptr) && back.tracks.size() == 1);
+	std::string resolved;
+	CHECK(ResolveProjectPath(d + "/song.3dmix", resolved, &error)
+		&& resolved.size() > 15 && resolved.compare(resolved.size() - 15, 15, "/mix/song.3dmix") == 0);
+
+	// flattened: a file holding the link's target
+	FILE* flat = fopen((d + "/flat.3dmix").c_str(), "w");
+	fputs("mix/song.3dmix\n", flat);
+	fclose(flat);
+	back = Project();
+	CHECK(ReadProject(d + "/flat.3dmix", back, &error, nullptr) && back.tracks.size() == 1);
+
+	// broken: says where it pointed
+	CHECK(symlink("mix/gone.3dmix", (d + "/broken.3dmix").c_str()) == 0);
+	CHECK(!ReadProject(d + "/broken.3dmix", back, &error, nullptr));
+	CHECK(error.find("mix/gone.3dmix") != std::string::npos);
+
+	// neither: text that names nothing, or binary junk
+	FILE* junk = fopen((d + "/junk.3dmix").c_str(), "w");
+	fputs("hello\n", junk);
+	fclose(junk);
+	CHECK(!ReadProject(d + "/junk.3dmix", back, &error, nullptr));
+	CHECK(error.find("not a 3dmiX project") != std::string::npos);
+
+	for (const char* f : {"song.3dmix", "flat.3dmix", "broken.3dmix", "junk.3dmix",
+			"mix/song.3dmix", "mix/t1"})
+		remove((d + "/" + f).c_str());
+	rmdir((d + "/mix").c_str());
+	rmdir(dir);
+
+	// BeOS 5's own: the top-level she-loves-it.3dmix is a link
+	const std::string sample = mixes + "/she-loves-it.3dmix";
+	if (access(sample.c_str(), R_OK) == 0) {
+		back = Project();
+		CHECK(ReadProject(sample, back, &error, nullptr) && back.tracks.size() == 12);
+	}
+}
+
 static void TestMix(const std::string& dir, const char* name, size_t tracks)
 {
 	std::string folder = dir + "/" + name + "/" + name + "-3dmix";
@@ -138,6 +200,7 @@ int main(int argc, char** argv)
 	TestClipLoop();
 	TestFades();
 	std::string dir = argc > 1 ? argv[1] : "vm/orig/boot/optional/sound/3D Mixes";
+	TestLinks(dir);
 	TestMix(dir, "the-lynx", 14);
 	TestMix(dir, "she-loves-it", 12);
 	TestMix(dir, "the-price-of-things", 5);

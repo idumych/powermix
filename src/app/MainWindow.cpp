@@ -753,7 +753,10 @@ MainWindow::OpenProject(const char* path)
 	fMixer->SyncTracks();
 	fEngine->Unlock();
 
-	BPath file(path);
+	// where the project really is (links followed): its folder and name
+	std::string real = path;
+	pmx::ResolveProjectPath(path, real, NULL);
+	BPath file(real.c_str());
 	BPath folder;
 	file.GetParent(&folder);
 	fProjectFolder = folder.Path();
@@ -848,7 +851,14 @@ MainWindow::DropRefs(BMessage* message)
 				&& get_ref_for_path(string, &ref) == B_OK); i++) {
 		BEntry entry(&ref, true);
 		BPath path;
-		if (entry.GetPath(&path) != B_OK || entry.IsDirectory())
+		if (entry.GetPath(&path) != B_OK) {
+			// a broken link: OpenProject says where it pointed
+			BEntry link(&ref, false);
+			if (link.GetPath(&path) == B_OK)
+				OpenProject(path.Path());
+			continue;
+		}
+		if (entry.IsDirectory())
 			continue;
 		char magic[4] = {0, 0, 0, 0};
 		FILE* file = fopen(path.Path(), "rb");
@@ -857,7 +867,12 @@ MainWindow::DropRefs(BMessage* message)
 				magic[0] = 0;
 			fclose(file);
 		}
-		if (memcmp(magic, "MAST", 4) == 0) {
+		// a project, or a file that holds a project's path (a link
+		// flattened by copying)
+		std::string projectPath;
+		if (memcmp(magic, "MAST", 4) == 0
+			|| (memcmp(magic, "!TRK", 4) != 0
+				&& pmx::ResolveProjectPath(path.Path(), projectPath, NULL))) {
 			OpenProject(path.Path());
 			return;
 		}
@@ -1175,9 +1190,11 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgOpenPanelRefs:
 		case B_REFS_RECEIVED:
 		{
+			// the entry itself: OpenProject follows links and reports a
+			// broken one (traversing here would drop it without a word)
 			entry_ref ref;
 			if (message->FindRef("refs", &ref) == B_OK) {
-				BEntry entry(&ref, true);
+				BEntry entry(&ref, false);
 				BPath path;
 				if (entry.GetPath(&path) == B_OK)
 					OpenProject(path.Path());

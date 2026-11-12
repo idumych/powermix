@@ -96,6 +96,13 @@ bool WriteTrack(const std::string& path, const Track& track, std::string* error)
 // Reads the project and every track it names, from the project's folder.
 // A missing or unreadable track is skipped, as 3dmiX does; its name is
 // added to *skipped if given.
+// Where a project really is. Links are followed (3dmiX opened the BeOS 5
+// sample mixes' links as empty projects, and its track files are found
+// beside the project, not the link), and so is a file that only holds the
+// path of a project: a link flattened by copying it through zip, a FAT or
+// NTFS volume or Windows. False, with error set, when it leads nowhere.
+bool ResolveProjectPath(const std::string& path, std::string& resolved, std::string* error);
+
 bool ReadProject(const std::string& path, Project& project, std::string* error,
 	std::vector<std::string>* skipped = nullptr);
 // Writes the track files and the project into folder (TrackView::Save).

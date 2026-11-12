@@ -78,10 +78,9 @@ App::ArgvReceived(int32 argc, char** argv)
 			path.SetTo(argv[i]);
 		else
 			path.SetTo(cwd, argv[i]);
-		BEntry entry(path.Path(), true);
-		BPath resolved;
-		if (entry.GetPath(&resolved) == B_OK && fWindow->Lock()) {
-			fWindow->OpenProject(resolved.Path());
+		// OpenProject follows links, and says so when one leads nowhere
+		if (fWindow->Lock()) {
+			fWindow->OpenProject(path.Path());
 			fWindow->Unlock();
 		}
 	}

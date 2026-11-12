@@ -51,7 +51,17 @@ enum {
 	kMsgClipsChanged = 'ClCh',
 	kMsgSetTicks = 'STik',
 	kMsgDropRefs = 'Drop',
-	kMsgRunScript = 'Grun'
+	kMsgRunScript = 'Grun',
+
+	// the modern look
+	kMsgModernLook = 'Modn',
+	kMsgViewMode = 'VMod',		// "mode": 0 stage, 1 split, 2 timeline
+	kMsgSeekStart = 'Strt',
+	kMsgSelectTrack = 'SlTk',	// "track", "extend"
+	kMsgToggleMute = 'TgMu',	// "track"
+	kMsgToggleSolo = 'TgSo',	// "track"
+	kMsgSetBeats = 'SBet',		// "beats"
+	kMsgZoomStage = 'ZmSt'		// "dir": 1 in, -1 out, 0 reset the angle
 };
 
 #endif

@@ -11,6 +11,7 @@
 
 #include "AboutWindow.h"
 #include "AudioEngine.h"
+#include "Look.h"
 #include "MainWindow.h"
 #include "PowerMix.h"
 
@@ -37,8 +38,10 @@ App::App()
 	:
 	BApplication(APP_SIGNATURE)
 {
-	// TSoundApplication: BRect(30, 30, 730, 430)
-	fWindow = new MainWindow(BRect(30, 30, 730, 430), &fEngine);
+	// TSoundApplication: BRect(30, 30, 730, 430), or where it was left
+	Settings settings;
+	settings.Load();
+	fWindow = new MainWindow(settings.classicFrame, &fEngine);
 	fWindow->Show();
 }
 

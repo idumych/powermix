@@ -9,6 +9,7 @@
 
 class AudioEngine;
 class BBitmap;
+class ModernButton;
 
 class MixerView : public BView {
 public:
@@ -21,6 +22,7 @@ public:
 	virtual void MouseUp(BPoint where);
 	virtual void KeyDown(const char* bytes, int32 count);
 	virtual void MessageReceived(BMessage* message);
+	virtual void FrameResized(float width, float height);
 
 	// Rebuilds the scene from the project (after loading, adding or
 	// deleting tracks). Call with the engine locked.
@@ -39,9 +41,20 @@ public:
 	void MuteSelection();
 	void SoloSelection();
 
+	// The modern look: the frame is scaled to fit the view, its colours
+	// darkened, the labels drawn as pills, with zoom buttons on top
+	void SetModern(bool modern);
+	// The buttons' kMsgZoomStage
+	void Zoom(int32 direction);
+	void Redraw() { Render(); Invalidate(); }
+
 private:
 	int FrameOffset() const;
+	BRect FrameRect() const;	// where the frame is drawn in the view
+	BPoint ToFrame(BPoint where) const;
+	void ModernTransform(float& scale, BPoint& offset) const;
 	void Render();
+	void ComposeModern();
 	void WritePositions();
 	void SelectionChanged();
 
@@ -49,6 +62,12 @@ private:
 	pmx::Scene fScene;
 	BBitmap* fBitmap;
 	BView* fBitmapView;
+	BBitmap* fDisplay;		// modern: the view's picture
+	BView* fDisplayView;
+	ModernButton** fButtons;	// modern: zoom in, zoom out, reset
+	rgb_color fMargin;
+	bool fModern;
+	bool fShowLabels;
 	BHandler* fSelectionTarget;
 	bool fActive;
 

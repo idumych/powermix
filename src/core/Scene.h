@@ -89,9 +89,33 @@ public:
 	void Render(const std::function<float(const std::string&)>& textWidth);
 	const std::vector<Label>& Labels() const { return fLabels; }
 
+	// For a vector renderer (PowerMix's modern look): the floor's lines,
+	// the columns' faces (far to near, as Render paints them) and the
+	// labels' anchors, projected into frame coordinates like Render's
+	struct FrameLine {
+		float x1, y1, x2, y2;
+		float depth;		// larger is nearer
+		int kind;			// 0 the floor's grid, 1 the marks in front of it
+	};
+	struct FrameFace {
+		float x[4], y[4];
+		float depth;
+		int track;
+		int part;			// 0 top, 1 side, 2 bottom, 3 the level bar
+	};
+	struct FrameLabel {
+		float anchorX, anchorY;		// the column's top
+		float x, y;					// above it
+		int track;
+	};
+	void ProjectScene(std::vector<FrameLine>& lines, std::vector<FrameFace>& faces,
+		std::vector<FrameLabel>& labels);
+	void ProjectPoint(float x, float y, float z, float& fx, float& fy, float& depth) const;
+
 	// Camera angles, for tests
 	float Pitch() const { return fPitch; }
 	float Yaw() const { return fYaw; }
+	float Focal() const { return fFocal; }
 
 private:
 	struct Vector {

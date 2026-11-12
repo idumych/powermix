@@ -44,6 +44,16 @@ including the sample mixes that came with BeOS 5.
 - **The time ruler** sets the part that loops (and is saved by File ▸ Save
   mix as WAVE); Ticks and the 3/4…7/4 menu set the beat grid, and Misc ▸
   Ticks from… works it out from the selection or a clip.
+- **A modern look** (Display ▸ Modern look), if you'd rather: the same
+  mixer in a dark layout with a toolbar (start, pause, time, beat grid,
+  master volume, meter, Save mix), a track list with mute and solo, the
+  3D stage drawn as smooth translucent columns over a glowing floor, the
+  lanes, and an inspector for the selected track. The inspector shows its
+  place on a floor plan you can drag, and what the mix makes of it: gain,
+  pan, delay between the ears. Stage | Split | Timeline chooses what
+  shows. PowerMix remembers the choice and each look's window size.
+
+  ![The modern look on Haiku](docs/screenshots/haiku-modern.png)
 - **About PowerMix** forms the name from a swirl of dots while a chord
   swells, as 3dmiX's About box did.
 

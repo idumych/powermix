@@ -1106,4 +1106,63 @@ Scene::HitTest(float px, float py)
 	return -1;
 }
 
+void
+Scene::ProjectPoint(float x, float y, float z, float& fx, float& fy, float& depth) const
+{
+	Project(x, y, z, fx, fy, depth);
+	fx += 512;
+	fy += fCenterY;
+}
+
+void
+Scene::ProjectScene(std::vector<FrameLine>& lines, std::vector<FrameFace>& faces,
+	std::vector<FrameLabel>& labels)
+{
+	lines.clear();
+	faces.clear();
+	labels.clear();
+	for (const Vector& v : fVectors) {
+		FrameLine line;
+		float d1, d2;
+		ProjectPoint(v.x1, v.y1, v.z1, line.x1, line.y1, d1);
+		ProjectPoint(v.x2, v.y2, v.z2, line.x2, line.y2, d2);
+		line.depth = (d1 + d2) / 2;
+		const bool onFloor = v.y1 == 0 && v.y2 == 0 && std::fabs(v.x1) <= 256
+			&& std::fabs(v.x2) <= 256 && std::fabs(v.z1) <= 256 && std::fabs(v.z2) <= 256;
+		line.kind = onFloor ? 0 : 1;
+		lines.push_back(line);
+	}
+
+	for (Vertex& v : fVertices)
+		Project(v.x, v.y, v.z, v.sx, v.sy, v.depth);
+	SortPolys();
+	for (const Poly& p : fPolys) {
+		FrameFace face;
+		face.track = p.owner;
+		face.depth = 0;
+		bool allTop = true, anyBar = false, allBottom = true;
+		for (int k = 0; k < 4; k++) {
+			const Vertex& v = fVertices[p.v[k]];
+			face.x[k] = v.sx + 512;
+			face.y[k] = v.sy + fCenterY;
+			face.depth += v.depth / 4;
+			allTop &= v.tag == kTagItop;
+			anyBar |= v.tag == kTagTtop;
+			allBottom &= (v.tag >> 16) == 0x626f;	// 'bo..'
+		}
+		face.part = anyBar ? 3 : allTop ? 0 : allBottom ? 2 : 1;
+		faces.push_back(face);
+	}
+
+	for (size_t i = 0; i + 1 < fVertices.size(); i++) {
+		const Vertex& anchor = fVertices[i];
+		if (anchor.owner < kAnchor)
+			continue;
+		const Vertex& point = fVertices[i + 1];
+		FrameLabel label = {anchor.sx + 512, anchor.sy + fCenterY, point.sx + 512,
+			point.sy + fCenterY, anchor.owner - kAnchor};
+		labels.push_back(label);
+	}
+}
+
 }	// namespace pmx

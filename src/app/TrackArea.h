@@ -14,6 +14,7 @@ namespace pmx { class Editor; }
 class BMenuField;
 class BScrollBar;
 class BTextControl;
+class SlimScrollBar;
 class TimeRuler;
 class TrackLanes;
 class ZoomBar;
@@ -38,7 +39,10 @@ public:
 	bool FastDisplay() const;
 	void SetZoom(float secondsPerPixel);
 	float Zoom() const { return fSecondsPerPixel; }
+	float ViewStart() const { return fViewStart; }
 	void ScrollTime(float seconds);
+	// The whole project across the lanes
+	void ZoomToFit();
 
 	AudioEngine* Engine() const { return fEngine; }
 	void SetEditor(pmx::Editor* editor) { fEditor = editor; }
@@ -51,12 +55,19 @@ public:
 	void SetTicks(float ticks);
 	bool BeatMarks() const { return fBeatMarks; }
 	std::set<int> SelectedTracks() const;
+	void SetBeats(int beats);
+
+	// The modern look: dark, the Ticks box moves to the toolbar, the lanes
+	// as wide as the view
+	void SetModern(bool modern);
 
 private:
 	friend class TimeRuler;
 	friend class TrackLanes;
+	friend class SlimScrollBar;
 
 	void DrawTriangle();
+	void LayoutChildren(float bottomInset);
 
 	AudioEngine* fEngine;
 	pmx::Editor* fEditor;
@@ -67,8 +78,11 @@ private:
 	ZoomBar* fZoom;
 	BScrollBar* fHorizontal;
 	BScrollBar* fVertical;
+	SlimScrollBar* fSlimHorizontal;	// the modern look's, over the hidden ones
+	SlimScrollBar* fSlimVertical;
 	float fRotation;
 	bool fBeatMarks = true;
+	bool fModernControls = false;	// the slim scroll bars show
 	float fSecondsPerPixel;
 	float fViewStart;		// seconds at the lanes' left edge
 };

@@ -13,12 +13,14 @@
 #include <Window.h>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <cstdio>
 
 #include "AudioEngine.h"
 #include "Edit.h"
 #include "Effects.h"
+#include "Look.h"
 #include "Palette.h"
 #include "PowerMix.h"
 
@@ -28,9 +30,18 @@ namespace {
 const rgb_color kBackground = {200, 200, 200, 255};		// palette 25
 const rgb_color kLaneColor = {224, 224, 224, 255};		// palette 28
 const float kLaneTop = 30;		// TrackView::Draw: first lane, then height + 8
+
+// the modern look starts the lanes at the top
+float
+FirstLane()
+{
+	return look::IsModern() ? 8 : kLaneTop;
+}
 const float kLaneHeight = 60;	// TrackViewer's field_0x18
 const float kClipLeft = 130;	// lanes' clip area, as wide as the ruler
 const float kZoomMin = 0.005f, kZoomMax = 1.0f;
+// the modern look's M/S chips are wider than the classic box
+const float kModernMuteLeft = 100, kModernMuteRight = 126;
 
 enum {
 	kMsgTicks = 'bet!',		// TCtrlView's text control
@@ -116,19 +127,19 @@ public:
 		font.SetSize(9);
 		SetFont(&font);
 		SetDrawingMode(B_OP_OVER);
-		SetHighColor(230, 230, 230);
+		SetHighColor(look::IsModern() ? look::kText : rgb_color{230, 230, 230, 255});
 		BString now;
 		now << int(fTime / 60) << ":";
 		now << (int(fTime) % 60 < 10 ? "0" : "") << int(fTime) % 60;
 		DrawString(now.String(), BPoint(0, 26));
 		SetDrawingMode(B_OP_COPY);
 
-		SetHighColor(40, 40, 40);
+		SetHighColor(look::IsModern() ? look::kLine : rgb_color{40, 40, 40, 255});
 		StrokeLine(BPoint(bounds.left, bounds.bottom), BPoint(bounds.right, bounds.bottom));
 
 		// the play position
 		float x = X(fTime);
-		SetHighColor(200, 0, 0);
+		SetHighColor(look::IsModern() ? look::kAccent : rgb_color{200, 0, 0, 255});
 		FillTriangle(BPoint(x, 31), BPoint(x - 4, bounds.bottom - 1),
 			BPoint(x + 4, bounds.bottom - 1));
 	}
@@ -137,9 +148,22 @@ public:
 	// 100 pixels apart), eight ticks between, a strip of beat ticks below
 	void DrawScale(BRect bounds, bool dark, float ticks, int beats)
 	{
-		const rgb_color ground = dark ? rgb_color{24, 24, 24, 255} : rgb_color{200, 200, 200, 255};
-		const rgb_color ink = dark ? rgb_color{200, 200, 200, 255} : rgb_color{60, 60, 60, 255};
-		const rgb_color text = dark ? rgb_color{230, 230, 230, 255} : rgb_color{20, 20, 20, 255};
+		const bool modern = look::IsModern();
+		rgb_color ground = dark ? rgb_color{24, 24, 24, 255} : rgb_color{200, 200, 200, 255};
+		rgb_color ink = dark ? rgb_color{200, 200, 200, 255} : rgb_color{60, 60, 60, 255};
+		rgb_color text = dark ? rgb_color{230, 230, 230, 255} : rgb_color{20, 20, 20, 255};
+		rgb_color strip = dark ? rgb_color{40, 40, 40, 255} : rgb_color{160, 160, 160, 255};
+		rgb_color beatColor = dark ? rgb_color{150, 150, 150, 255} : rgb_color{240, 240, 240, 255};
+		rgb_color barColor = {255, 255, 255, 255};
+		if (modern) {
+			// the selection in accent blue, the rest in the panel's colour
+			ground = dark ? look::kAccentDim : look::kPanel;
+			ink = dark ? look::kAccentLine : look::kBorder;
+			text = dark ? look::kAccentText : look::kMuted;
+			strip = dark ? rgb_color{27, 42, 77, 255} : rgb_color{21, 25, 34, 255};
+			beatColor = dark ? look::kAccentLine : look::kBorder;
+			barColor = dark ? look::kAccentText : look::kMuted;
+		}
 		SetHighColor(ground);
 		FillRect(BRect(bounds.left, 0, bounds.right, bounds.bottom - 1));
 
@@ -165,7 +189,7 @@ public:
 		}
 		SetDrawingMode(B_OP_COPY);
 
-		SetHighColor(dark ? rgb_color{40, 40, 40, 255} : rgb_color{160, 160, 160, 255});
+		SetHighColor(strip);
 		FillRect(BRect(bounds.left, 28, bounds.right, bounds.bottom - 1));
 		if (ticks > 0 && fArea->fBeatMarks) {
 			double beat = 120.0 / ticks;
@@ -173,9 +197,7 @@ public:
 				long firstBeat = long(floor(Time(bounds.left) / beat));
 				for (long b = std::max(0L, firstBeat); X(b * beat) <= bounds.right; b++) {
 					float x = X(b * beat);
-					SetHighColor(b % beats == 0 ? rgb_color{255, 255, 255, 255}
-						: rgb_color{dark ? uint8(150) : uint8(240), dark ? uint8(150) : uint8(240),
-							dark ? uint8(150) : uint8(240), 255});
+					SetHighColor(b % beats == 0 ? barColor : beatColor);
 					StrokeLine(BPoint(x, b % beats == 0 ? 29 : 31), BPoint(x, bounds.bottom - 1));
 				}
 			}
@@ -255,10 +277,10 @@ public:
 		BView(frame, "lanes", B_FOLLOW_ALL_SIDES, B_WILL_DRAW),
 		fArea(area)
 	{
-		SetViewColor(kBackground);
+		SetViewColor(look::IsModern() ? look::kPanel : kBackground);
 	}
 
-	float LaneTop(size_t i) const { return kLaneTop + i * (kLaneHeight + 8); }
+	float LaneTop(size_t i) const { return FirstLane() + i * (kLaneHeight + 8); }
 
 	float X(double time) const
 	{
@@ -284,6 +306,10 @@ public:
 	// TrackView::draw_track_extra: "3-bass" and the M/S box
 	void DrawExtra(size_t index, const pmx::Track& track, BRect lane, bool muted, bool soloed)
 	{
+		if (look::IsModern()) {
+			DrawModernExtra(index, track, lane, muted, soloed);
+			return;
+		}
 		const float center = lane.top + kLaneHeight / 2;
 		BFont font;
 		GetFont(&font);
@@ -315,9 +341,65 @@ public:
 		SetDrawingMode(B_OP_COPY);
 	}
 
+	// The modern look: a colour mark, the name, M and S chips
+	void DrawModernExtra(size_t index, const pmx::Track& track, BRect lane, bool muted,
+		bool soloed)
+	{
+		const bool selected = fSelected.count(int(index)) > 0;
+		SetHighColor(selected ? rgb_color{19, 26, 43, 255} : look::kPanel);
+		FillRect(BRect(0, lane.top - 4, Bounds().right, lane.bottom + 3));
+		SetHighColor(look::kLine);
+		StrokeLine(BPoint(0, lane.bottom + 4), BPoint(Bounds().right, lane.bottom + 4));
+		const float center = floorf(lane.top + kLaneHeight / 2);
+		SetDrawingMode(B_OP_ALPHA);
+		look::FillRound(this, BRect(12, center - 4, 19, center + 3), 2,
+			look::TrackColor(int(index)));
+		BFont font(be_plain_font);
+		font.SetSize(12);
+		SetFont(&font);
+		BString name(track.name.c_str());
+		font.TruncateString(&name, B_TRUNCATE_END, kModernMuteLeft - 34);
+		SetHighColor(muted ? look::kMuted : look::kSoft);
+		SetDrawingMode(B_OP_OVER);
+		DrawString(name.String(), BPoint(26, center + 4));
+		SetDrawingMode(B_OP_ALPHA);
+		const bool states[2] = {muted, soloed};
+		const char* letters[2] = {"M", "S"};
+		font = *be_bold_font;
+		font.SetSize(9);
+		SetFont(&font);
+		for (int k = 0; k < 2; k++) {
+			BRect chip(kModernMuteLeft, k == 0 ? center - 22 : center + 1, kModernMuteRight,
+				k == 0 ? center - 2 : center + 21);
+			rgb_color fill = look::kRaised, ink = look::kMuted, line = look::kBorder;
+			if (states[k]) {
+				fill = k == 0 ? look::kWarnDim : look::kAccentDim;
+				ink = k == 0 ? look::kWarn : look::kAccentText;
+				line = k == 0 ? look::Mix(look::kWarn, look::kPanel, 0.6f) : look::kAccentLine;
+			}
+			look::FillRound(this, chip, 5, fill);
+			look::StrokeRound(this, chip, 5, line);
+			SetHighColor(ink);
+			SetDrawingMode(B_OP_OVER);
+			DrawString(letters[k], BPoint(chip.left + floorf((chip.Width()
+				- font.StringWidth(letters[k])) / 2) + 1, chip.bottom - 6));
+			SetDrawingMode(B_OP_ALPHA);
+		}
+		SetDrawingMode(B_OP_COPY);
+	}
+
 	// TrackViewer::InternalDraw: the lane, its clips, a bevelled frame
 	void DrawTrack(size_t index, const pmx::Track& track, BRect lane, bool selected)
 	{
+		if (look::IsModern()) {
+			BRect box(kClipLeft, lane.top, Bounds().right - 4, lane.top + kLaneHeight);
+			BRegion clip(box);
+			ConstrainClippingRegion(&clip);
+			for (size_t k = 0; k < track.clips.size(); k++)
+				DrawModernClip(index, track.clips[k], box, fClips.count(pmx::ClipRef(index, k)) > 0);
+			ConstrainClippingRegion(NULL);
+			return;
+		}
 		BRect box(kClipLeft, lane.top, kClipLeft + 799, lane.top + kLaneHeight);
 		BRect visible = box & Bounds();
 		if (!visible.IsValid())
@@ -423,6 +505,73 @@ public:
 		}
 	}
 
+	// The modern look's clip: rounded, the first pass of the loop in the
+	// track's colour and the repeats in grey, mirrored about the middle
+	void DrawModernClip(size_t index, const pmx::Clip& c, BRect box, bool selected)
+	{
+		const float spp = fArea->fSecondsPerPixel;
+		const float top = box.top + 4, bottom = box.bottom - 8;
+		float left = X(c.start), right = X(c.end) - 2;
+		if (right < box.left || left > box.right)
+			return;
+		const rgb_color color = look::TrackColor(int(index));
+		BRect rect(left, top, right, bottom);
+		SetDrawingMode(B_OP_ALPHA);
+		look::FillRound(this, rect, 7, rgb_color{25, 29, 38, 255});
+		look::StrokeRound(this, rect, 7, selected ? look::kAccent : rgb_color{38, 44, 57, 255});
+		SetDrawingMode(B_OP_COPY);
+
+		const float waveTop = top + 4, waveBottom = bottom - 13;
+		const float mid = floorf((waveTop + waveBottom) / 2);
+		const float scale = ((waveBottom - waveTop) / 2) / 32768.0f;
+		const float loopLength = c.loopOut - c.loopIn;
+		const rgb_color grey = {98, 108, 126, 255};
+		bool repeat = false;
+		float t = c.loopIn + 2 * spp;
+		int x0 = std::max(int(left) + 3, int(box.left));
+		if (x0 > int(left) + 1)
+			t += spp * (x0 - (int(left) + 1));
+		while (loopLength > 0 && t > c.loopOut) {
+			t -= loopLength;
+			repeat = true;
+		}
+		int x1 = std::min(int(right) - 3, int(box.right));
+		for (int x = x0; x < x1; x++) {
+			if (t > c.loopOut && loopLength > 0) {
+				repeat = true;
+				t -= loopLength;
+			}
+			int16 lo, hi;
+			GetSample(c, t, spp, lo, hi);
+			float extent = std::max(1.0f, std::max(-float(lo), float(hi)) * scale);
+			SetHighColor(repeat ? grey : color);
+			StrokeLine(BPoint(x, mid - extent), BPoint(x, mid + extent));
+			t += spp;
+		}
+
+		// the loop's end, dashed, and its handle below
+		float loopEnd = X(c.start + loopLength);
+		SetHighColor(color);
+		if (loopLength > 0 && loopEnd < right) {
+			for (float y = top + 2; y < bottom - 2; y += 6)
+				StrokeLine(BPoint(loopEnd, y), BPoint(loopEnd, std::min(y + 3, bottom - 2)));
+		}
+		float h = std::min(loopEnd, right);
+		FillTriangle(BPoint(h, bottom + 1), BPoint(h - 4, bottom + 6), BPoint(h + 4, bottom + 6));
+
+		if (right - left > 40 && !c.source.empty()) {
+			BFont font(be_plain_font);
+			font.SetSize(10);
+			SetFont(&font);
+			BString name(c.source.c_str());
+			font.TruncateString(&name, B_TRUNCATE_END, right - left - 14);
+			SetHighColor(look::kSoft);
+			SetDrawingMode(B_OP_OVER);
+			DrawString(name.String(), BPoint(left + 7, bottom - 4));
+			SetDrawingMode(B_OP_COPY);
+		}
+	}
+
 	// SampleCache::GetSample: the extremes of every (n / 8 + 1)th sample in
 	// the column (n / 2 + 1 with Display ▸ Fast display), at least -1 and 1
 	static void GetSample(const pmx::Clip& c, float time, float span, int16& lo, int16& hi)
@@ -504,14 +653,17 @@ public:
 		bool notifyTracks = false;
 		fDrag = kNoDrag;
 
-		if (lane >= 0 && where.x >= 110 && where.x <= 122) {
+		const bool modern = look::IsModern();
+		const float muteLeft = modern ? kModernMuteLeft : 110;
+		const float muteRight = modern ? kModernMuteRight : 122;
+		if (lane >= 0 && where.x >= muteLeft && where.x <= muteRight) {
 			float center = LaneTop(size_t(lane)) + kLaneHeight / 2;
 			if (where.y < center)
 				mixer.SetMuted(size_t(lane), !mixer.IsMuted(size_t(lane)));
 			else
 				mixer.SetSoloed(size_t(lane), !mixer.IsSoloed(size_t(lane)));
 			notifyMuteSolo = true;
-		} else if (lane >= 0 && where.x < 110) {
+		} else if (lane >= 0 && where.x < muteLeft) {
 			if (!shift)
 				fSelected.clear();
 			if (fSelected.count(lane) && shift)
@@ -735,18 +887,23 @@ public:
 	virtual void Draw(BRect updateRect)
 	{
 		BRect b = Bounds();
-		SetHighColor(255, 255, 255);
+		const bool modern = look::IsModern();
+		SetHighColor(modern ? look::kPanel : rgb_color{255, 255, 255, 255});
 		FillRect(b);
 		for (float x = 4; x < b.right - 4; x++) {
-			uint8 v = uint8(std::min(220.0f, 20 + (x - 4) / (b.Width() - 8) * 220));
-			SetHighColor(v, v, v);
+			float f = (x - 4) / (b.Width() - 8);
+			uint8 v = uint8(std::min(220.0f, 20 + f * 220));
+			if (modern)
+				SetHighColor(look::Mix(look::kBorder, look::kMuted, f));
+			else
+				SetHighColor(v, v, v);
 			float h = 1 + (x - 4) / (b.Width() - 8) * 4;
 			StrokeLine(BPoint(x, b.top + 7 - h), BPoint(x, b.top + 7 + h));
 		}
-		SetHighColor(200, 0, 0);
+		SetHighColor(modern ? look::kAccent : rgb_color{200, 0, 0, 255});
 		float x = MarkX();
 		StrokeLine(BPoint(x, b.top + 1), BPoint(x, b.bottom - 1));
-		SetHighColor(150, 150, 150);
+		SetHighColor(modern ? look::kLine : rgb_color{150, 150, 150, 255});
 		StrokeRect(b);
 	}
 
@@ -795,6 +952,132 @@ public:
 
 private:
 	TrackArea* fArea;
+};
+
+// #pragma mark - SlimScrollBar
+
+// The modern look's scroll bar: a thin rounded thumb on a dark track. It
+// drives the classic scroll bar it covers (hidden), which keeps the value,
+// so the mouse wheel and everything that scrolls the lanes still works.
+class SlimScrollBar : public BView {
+public:
+	SlimScrollBar(BScrollBar* model, std::function<float()> visible)
+		:
+		BView(model->Frame(), "slim", model->ResizingMode(), B_WILL_DRAW),
+		fModel(model),
+		fVisible(visible),
+		fTracking(false),
+		fGrab(0),
+		fShownValue(-1),
+		fShownMax(-1)
+	{
+		SetViewColor(B_TRANSPARENT_COLOR);
+	}
+
+	bool Vertical() const { return fModel->Orientation() == B_VERTICAL; }
+
+	// the thumb's ends along the bar
+	void Thumb(float& start, float& end) const
+	{
+		float min, max;
+		fModel->GetRange(&min, &max);
+		const float length = Length() - 4;
+		const float visible = std::max(1.0f, fVisible());
+		const float total = std::max(visible, max - min + visible);
+		const float size = std::max(24.0f, std::min(length, length * visible / total));
+		const float f = max > min ? (fModel->Value() - min) / (max - min) : 0;
+		start = 2 + f * (length - size);
+		end = start + size;
+	}
+
+	float Length() const
+	{
+		return Vertical() ? Bounds().Height() : Bounds().Width();
+	}
+
+	virtual void Draw(BRect updateRect)
+	{
+		BRect b = Bounds();
+		SetHighColor(look::kPanel);
+		FillRect(b);
+		float min, max;
+		fModel->GetRange(&min, &max);
+		fShownValue = fModel->Value();
+		fShownMax = max;
+		if (max <= min)
+			return;
+		SetDrawingMode(B_OP_ALPHA);
+		BRect track = Vertical() ? BRect(4, 2, b.right - 4, b.bottom - 2)
+			: BRect(2, 4, b.right - 2, b.bottom - 4);
+		look::FillRound(this, track, 3, rgb_color{21, 25, 34, 255});
+		float start, end;
+		Thumb(start, end);
+		BRect thumb = Vertical() ? BRect(track.left, start, track.right, end)
+			: BRect(start, track.top, end, track.bottom);
+		look::FillRound(this, thumb, 3, fTracking ? look::kMuted : rgb_color{62, 70, 88, 255});
+		SetDrawingMode(B_OP_COPY);
+	}
+
+	virtual void MouseDown(BPoint where)
+	{
+		float min, max;
+		fModel->GetRange(&min, &max);
+		if (max <= min)
+			return;
+		const float at = Vertical() ? where.y : where.x;
+		float start, end;
+		Thumb(start, end);
+		if (at >= start && at <= end) {
+			SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+			fTracking = true;
+			fGrab = at - start;
+			Invalidate();
+			return;
+		}
+		// a page towards the click
+		const float page = std::max(10.0f, fVisible() * 0.9f);
+		fModel->SetValue(fModel->Value() + (at < start ? -page : page));
+		Invalidate();
+	}
+
+	virtual void MouseMoved(BPoint where, uint32 transit, const BMessage* drag)
+	{
+		if (!fTracking)
+			return;
+		float min, max;
+		fModel->GetRange(&min, &max);
+		float start, end;
+		Thumb(start, end);
+		const float travel = Length() - 4 - (end - start);
+		if (travel <= 0)
+			return;
+		const float at = (Vertical() ? where.y : where.x) - fGrab - 2;
+		const float f = std::max(0.0f, std::min(1.0f, at / travel));
+		fModel->SetValue(min + f * (max - min));
+		Invalidate();
+	}
+
+	virtual void MouseUp(BPoint where)
+	{
+		fTracking = false;
+		Invalidate();
+	}
+
+	// Redraws when the value changed elsewhere (the wheel, a zoom)
+	void Sync()
+	{
+		float min, max;
+		fModel->GetRange(&min, &max);
+		if (fModel->Value() != fShownValue || max != fShownMax)
+			Invalidate();
+	}
+
+private:
+	BScrollBar* fModel;
+	std::function<float()> fVisible;
+	bool fTracking;
+	float fGrab;
+	float fShownValue, fShownMax;
 };
 
 // #pragma mark - TrackArea
@@ -852,6 +1135,15 @@ TrackArea::TrackArea(BRect frame, AudioEngine* engine)
 	AddChild(fZoom);
 	fHorizontal = new TimeScrollBar(BRect(110, bottom + 1, width - 13, bottom + 15), this);
 	AddChild(fHorizontal);
+
+	// the scroll bars count pixels: the lanes' height, the clip area's width
+	fSlimVertical = new SlimScrollBar(fVertical, [this]() { return fLanes->Bounds().Height(); });
+	fSlimHorizontal = new SlimScrollBar(fHorizontal,
+		[this]() { return fLanes->Bounds().Width() - kClipLeft; });
+	AddChild(fSlimVertical);
+	AddChild(fSlimHorizontal);
+	fSlimVertical->Hide();
+	fSlimHorizontal->Hide();
 }
 
 void
@@ -866,6 +1158,15 @@ TrackArea::AttachedToWindow()
 void
 TrackArea::Draw(BRect updateRect)
 {
+	if (look::IsModern()) {
+		// the corner above the names
+		SetHighColor(look::kPanel);
+		FillRect(BRect(0, 0, kClipLeft - 1, 40));
+		SetHighColor(look::kLine);
+		StrokeLine(BPoint(0, 40), BPoint(kClipLeft - 1, 40));
+		look::DrawCaption(this, "Timeline", BPoint(12, 25), look::kMuted);
+		return;
+	}
 	SetHighColor(130, 130, 140);
 	StrokeLine(BPoint(0, 40 - 1), BPoint(129, 40 - 1));
 	SetHighColor(160, 160, 160);
@@ -901,7 +1202,7 @@ void
 TrackArea::MouseDown(BPoint where)
 {
 	// TCtrlView::MouseDown: the triangle shows and hides the controls
-	if (where.x < 15 && where.y < 40)
+	if (!look::IsModern() && where.x < 15 && where.y < 40)
 		Window()->PostMessage(kMsgShowHideControls);
 }
 
@@ -967,7 +1268,7 @@ TrackArea::ProjectChanged(bool keepSelection)
 		fEngine->Unlock();
 	}
 	// TrackView::LoadMaster: 30 + (height + 8) per track
-	fVertical->SetRange(0, std::max(0.0f, kLaneTop + count * (kLaneHeight + 8)
+	fVertical->SetRange(0, std::max(0.0f, FirstLane() + count * (kLaneHeight + 8)
 		- fLanes->Bounds().Height()));
 	fHorizontal->SetRange(0, std::max(0.0f, length / fSecondsPerPixel));
 	fLanes->Invalidate();
@@ -1025,6 +1326,72 @@ TrackArea::SetTicks(float ticks)
 }
 
 void
+TrackArea::SetBeats(int beats)
+{
+	if (fEngine->Lock()) {
+		fEngine->Project().beatsPerBar = beats;
+		fEngine->Unlock();
+	}
+	BMenuItem* item = fBeats->Menu()->ItemAt(std::max(0, std::min(4, beats - 3)));
+	if (item != NULL)
+		item->SetMarked(true);
+	fRuler->Invalidate();
+}
+
+void
+TrackArea::SetModern(bool modern)
+{
+	SetViewColor(modern ? look::kPanel : kBackground);
+	fLanes->SetViewColor(modern ? look::kPanel : kBackground);
+	// the Ticks box and the system's scroll bars, or the slim ones. Not
+	// by IsHidden(): it also answers for hidden parents, as the classic
+	// layout's are while the window switches back.
+	if (modern != fModernControls) {
+		fModernControls = modern;
+		BView* classic[4] = {fTicks, fBeats, fVertical, fHorizontal};
+		for (BView* view : classic)
+			modern ? view->Hide() : view->Show();
+		BView* slim[2] = {fSlimVertical, fSlimHorizontal};
+		for (BView* view : slim)
+			modern ? view->Show() : view->Hide();
+	}
+	// the classic view reaches 50 + 34 below the window (TWaveWindow)
+	LayoutChildren(modern ? 15 : 50 + 34);
+	Invalidate();
+	fLanes->Invalidate();
+	fRuler->Invalidate();
+	fZoom->Invalidate();
+}
+
+void
+TrackArea::LayoutChildren(float bottomInset)
+{
+	const float width = Bounds().Width();
+	const float bottom = Bounds().Height() - bottomInset;
+	fRuler->MoveTo(130, 1);
+	fRuler->ResizeTo(width - 130, 39);
+	fLanes->MoveTo(0, 41);
+	fLanes->ResizeTo(width - 14, bottom - 41);
+	fVertical->MoveTo(width - 13, 41);
+	fVertical->ResizeTo(14, bottom - 40);
+	fZoom->MoveTo(0, bottom + 1);
+	fZoom->ResizeTo(109, 14);
+	fHorizontal->MoveTo(110, bottom + 1);
+	fHorizontal->ResizeTo(width - 13 - 110, 14);
+	fSlimVertical->MoveTo(fVertical->Frame().LeftTop());
+	fSlimVertical->ResizeTo(fVertical->Bounds().Width(), fVertical->Bounds().Height());
+	fSlimHorizontal->MoveTo(fHorizontal->Frame().LeftTop());
+	fSlimHorizontal->ResizeTo(fHorizontal->Bounds().Width(), fHorizontal->Bounds().Height());
+	float count = 0;
+	if (fEngine->Lock()) {
+		count = fEngine->Project().tracks.size();
+		fEngine->Unlock();
+	}
+	fVertical->SetRange(0, std::max(0.0f, FirstLane() + count * (kLaneHeight + 8)
+		- fLanes->Bounds().Height()));
+}
+
+void
 TrackArea::SetBeatMarks(bool show)
 {
 	fBeatMarks = show;
@@ -1041,6 +1408,10 @@ void
 TrackArea::SetTime(double time)
 {
 	fRuler->SetTime(time);
+	if (look::IsModern()) {
+		fSlimVertical->Sync();
+		fSlimHorizontal->Sync();
+	}
 }
 
 void
@@ -1069,6 +1440,22 @@ TrackArea::SetZoom(float secondsPerPixel)
 	fZoom->Invalidate();
 	fLanes->Invalidate();
 	fRuler->Invalidate();
+}
+
+void
+TrackArea::ZoomToFit()
+{
+	float length = 0;
+	if (fEngine->Lock()) {
+		length = fEngine->Project().Length();
+		fEngine->Unlock();
+	}
+	const float width = fLanes->Bounds().Width() - kClipLeft - 24;
+	if (length <= 0 || width < 50)
+		return;
+	fHorizontal->SetValue(0);
+	ScrollTime(0);
+	SetZoom(std::max(kZoomMin, std::min(kZoomMax, length / width)));
 }
 
 void

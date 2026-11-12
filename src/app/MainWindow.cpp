@@ -13,6 +13,7 @@
 #include <MessageRunner.h>
 #include <NodeInfo.h>
 #include <Path.h>
+#include <Screen.h>
 
 #include <cmath>
 #include <cstdio>
@@ -27,6 +28,7 @@
 #include "Importer.h"
 #include "WaveReader.h"
 #include "MixerView.h"
+#include "ModernViews.h"
 #include "PowerMix.h"
 #include "StatusView.h"
 #include "TrackArea.h"
@@ -47,8 +49,23 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 	fSavePanel(NULL),
 	fWavePanel(NULL),
 	fMixerShown(false),
-	fControlsShown(false)
+	fControlsShown(false),
+	fMasterValue(50),
+	fModern(false),
+	fViewMode(1),
+	fModernItem(NULL),
+	fControlsItem(NULL),
+	fModernRoot(NULL),
+	fToolbar(NULL),
+	fTrackList(NULL),
+	fInspector(NULL),
+	fStageFrame(NULL),
+	fTimelineFrame(NULL),
+	fClassicZoom(1.0f / 14),
+	fClassicViewStart(0)
 {
+	fSettings.Load();
+	fViewMode = fSettings.viewMode;
 	fEditor = new pmx::Editor(&engine->Project());
 	BRect menuFrame = Bounds();
 	BuildMenus(menuFrame);
@@ -80,6 +97,9 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 
 	BMessage animate(kMsgAnimate);
 	fRunner = new BMessageRunner(BMessenger(this), &animate, 35000);
+
+	if (fSettings.modern)
+		SetModern(true);
 }
 
 MainWindow::~MainWindow()
@@ -126,13 +146,16 @@ MainWindow::BuildMenus(BRect& menuFrame)
 	menu = new BMenu(B_TRANSLATE("Display"));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Show/hide mixer"),
 		new BMessage(kMsgShowHideMixer), 'T'));
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Show/hide controls"),
+	menu->AddItem(fControlsItem = new BMenuItem(B_TRANSLATE("Show/hide controls"),
 		new BMessage(kMsgShowHideControls), 'U'));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Show/hide beat marks"),
 		new BMessage(kMsgShowHideBeatMarks), 'B'));
 	menu->AddSeparatorItem();
 	menu->AddItem(fFastItem = new BMenuItem(B_TRANSLATE("Fast display"),
 		new BMessage(kMsgFastDisplay)));
+	menu->AddSeparatorItem();
+	menu->AddItem(fModernItem = new BMenuItem(B_TRANSLATE("Modern look"),
+		new BMessage(kMsgModernLook)));
 	bar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Tracks"));
@@ -182,6 +205,246 @@ MainWindow::MenusBeginning()
 	fClearItem->SetEnabled(!clips.empty());
 	fPasteItem->SetEnabled(fEditor->HasClipboard() && haveProject);
 	fFastItem->SetMarked(fTrackArea->FastDisplay());
+	fModernItem->SetMarked(fModern);
+	fControlsItem->SetEnabled(!fModern);
+}
+
+// #pragma mark - The modern look
+
+void
+MainWindow::BuildModern()
+{
+	BRect bounds = Bounds();
+	const float top = KeyMenuBar()->Frame().bottom + 1;
+	fModernRoot = new BView(BRect(0, top, bounds.right, bounds.bottom), "modern",
+		B_FOLLOW_ALL_SIDES, 0);
+	fModernRoot->SetViewColor(look::kGround);
+	AddChild(fModernRoot);
+	const float w = fModernRoot->Bounds().Width(), h = fModernRoot->Bounds().Height();
+
+	fToolbar = new ToolbarView(BRect(0, 0, w, ToolbarView::kHeight - 1));
+	fModernRoot->AddChild(fToolbar);
+	fTrackList = new TrackListView(BRect(0, ToolbarView::kHeight, TrackListView::kWidth - 1, h),
+		fEngine, fMixer);
+	fModernRoot->AddChild(fTrackList);
+	fInspector = new InspectorView(BRect(w - InspectorView::kWidth + 1, ToolbarView::kHeight, w,
+		h), fEngine, fMixer);
+	fModernRoot->AddChild(fInspector);
+	// the 3D view and the lanes sit in frames whose colour is their border
+	fStageFrame = new BView(BRect(0, 0, 10, 10), "stage", B_FOLLOW_NONE, 0);
+	fStageFrame->SetViewColor(look::kLine);
+	fModernRoot->AddChild(fStageFrame);
+	fTimelineFrame = new BView(BRect(0, 0, 10, 10), "timeline", B_FOLLOW_NONE, 0);
+	fTimelineFrame->SetViewColor(look::kLine);
+	fModernRoot->AddChild(fTimelineFrame);
+	fModernRoot->Hide();
+}
+
+// Display ▸ Modern look. The 3D view and the track area move between the
+// two layouts; each layout keeps its own window frame.
+void
+MainWindow::SetModern(bool modern)
+{
+	if (modern == fModern)
+		return;
+	DisableUpdates();
+	if (modern) {
+		fSettings.classicFrame = Frame();
+		fClassicTrackFrame = fTrackArea->Frame();
+		fClassicZoom = fTrackArea->Zoom();
+		fClassicViewStart = fTrackArea->ViewStart();
+		fInner->RemoveChild(fMixer);
+		fInner->RemoveChild(fTrackArea);
+		fOuter->Hide();
+		if (fModernRoot == NULL)
+			BuildModern();
+		look::SetModern(true);
+		fModern = true;
+		SetSizeLimits(980, 32768, 600, 32768);
+		ResizeKeepingPlace(fSettings.modernFrame);
+		fStageFrame->AddChild(fMixer);
+		fTimelineFrame->AddChild(fTrackArea);
+		fModernRoot->Show();
+		fMixer->SetModern(true);
+		LayoutModern();
+		fTrackArea->SetModern(true);
+		fTrackArea->ZoomToFit();
+		SyncModernControls();
+		ProjectNameChanged();
+		fInspector->Refresh();
+	} else {
+		fSettings.modernFrame = Frame();
+		fStageFrame->RemoveChild(fMixer);
+		fTimelineFrame->RemoveChild(fTrackArea);
+		fModernRoot->Hide();
+		look::SetModern(false);
+		fModern = false;
+		SetSizeLimits(0, 32768, 0, 32768);
+		ResizeKeepingPlace(fSettings.classicFrame);
+		fMixer->SetModern(false);
+		fMixer->MoveTo(0, 0);
+		fMixer->ResizeTo(1023, kMixerHeight);
+		fTrackArea->MoveTo(fClassicTrackFrame.LeftTop());
+		fTrackArea->ResizeTo(fClassicTrackFrame.Width(), fClassicTrackFrame.Height());
+		fInner->AddChild(fMixer);
+		fInner->AddChild(fTrackArea);
+		fTrackArea->SetModern(false);
+		fTrackArea->ScrollTime(fClassicViewStart);
+		fTrackArea->SetZoom(fClassicZoom);
+		fOuter->Show();
+		fMixer->SetActive(fMixerShown);
+	}
+	fSettings.modern = fModern;
+	EnableUpdates();
+	if (fModern && StageVisible())
+		fMixer->MakeFocus(true);
+}
+
+// The other look's size, here; moved only as far as needed to stay on
+// screen
+void
+MainWindow::ResizeKeepingPlace(BRect size)
+{
+	BRect screen = BScreen(this).Frame();
+	BRect frame = Frame();
+	float width = std::min(size.Width(), screen.Width() - 20);
+	float height = std::min(size.Height(), screen.Height() - 40);
+	float left = std::max(screen.left + 4, std::min(frame.left, screen.right - 4 - width));
+	float top = std::max(screen.top + 24, std::min(frame.top, screen.bottom - 4 - height));
+	if (left != frame.left || top != frame.top)
+		MoveTo(left, top);
+	ResizeTo(width, height);
+}
+
+bool
+MainWindow::StageVisible() const
+{
+	return fModern ? fViewMode != 2 : fMixerShown;
+}
+
+void
+MainWindow::FrameResized(float width, float height)
+{
+	BWindow::FrameResized(width, height);
+	if (fModern)
+		LayoutModern();
+}
+
+void
+MainWindow::LayoutModern()
+{
+	if (fModernRoot == NULL)
+		return;
+	BRect b = fModernRoot->Bounds();
+	const float gap = 12;
+	const float left = TrackListView::kWidth + gap;
+	const float right = b.right - InspectorView::kWidth - gap;
+	const float top = ToolbarView::kHeight + gap;
+	const float bottom = b.bottom - gap;
+	float stageBottom = top - 1, timelineTop = top;
+	if (fViewMode == 0)
+		stageBottom = bottom;
+	else if (fViewMode == 1) {
+		// as tall as the scaled frame needs, up to half
+		float height = std::min((bottom - top - gap) * 0.5f,
+			std::max((bottom - top - gap) * 0.36f, (right - left) * 480 / 1024 + 4));
+		stageBottom = floorf(top + height);
+		timelineTop = stageBottom + gap + 1;
+	}
+	if (fViewMode == 2) {
+		if (!fStageFrame->IsHidden())
+			fStageFrame->Hide();
+	} else {
+		fStageFrame->MoveTo(left, top);
+		fStageFrame->ResizeTo(right - left, stageBottom - top);
+		fMixer->MoveTo(1, 1);
+		fMixer->ResizeTo(right - left - 2, stageBottom - top - 2);
+		if (fStageFrame->IsHidden())
+			fStageFrame->Show();
+	}
+	if (fViewMode == 0) {
+		if (!fTimelineFrame->IsHidden())
+			fTimelineFrame->Hide();
+	} else {
+		fTimelineFrame->MoveTo(left, timelineTop);
+		fTimelineFrame->ResizeTo(right - left, bottom - timelineTop);
+		fTrackArea->MoveTo(1, 1);
+		fTrackArea->ResizeTo(right - left - 2, bottom - timelineTop - 2);
+		if (fTimelineFrame->IsHidden())
+			fTimelineFrame->Show();
+	}
+	fMixer->SetActive(StageVisible());
+}
+
+void
+MainWindow::SetViewMode(int mode)
+{
+	if (mode < 0 || mode > 2)
+		return;
+	fViewMode = mode;
+	fSettings.viewMode = mode;
+	if (fToolbar != NULL)
+		fToolbar->SetViewMode(mode);
+	if (fModern) {
+		LayoutModern();
+		// the lanes keep their selection; the track area relays its children
+		fTrackArea->SetModern(true);
+		if (StageVisible())
+			fMixer->MakeFocus(true);
+	}
+}
+
+void
+MainWindow::SyncModernControls()
+{
+	if (fToolbar == NULL)
+		return;
+	float ticks = 0;
+	int beats = 4;
+	if (fEngine->Lock()) {
+		ticks = fEngine->Project().ticks;
+		beats = fEngine->Project().beatsPerBar;
+		fEngine->Unlock();
+	}
+	fToolbar->SetTicks(ticks);
+	fToolbar->SetBeats(beats);
+	fToolbar->SetMaster(fMasterValue);
+	fToolbar->SetPaused(fEngine->IsPaused());
+	fToolbar->SetViewMode(fViewMode);
+}
+
+void
+MainWindow::ProjectNameChanged()
+{
+	if (fToolbar != NULL)
+		fToolbar->SetProject(fProjectName.String());
+}
+
+// One selection for the 3D view, the lanes, the list and the inspector
+void
+MainWindow::SelectTracks(const std::set<int>& tracks)
+{
+	pmx::Scene& scene = fMixer->Scene();
+	scene.DeselectAll();
+	BMessage selection(kMsgMixerSelection);
+	for (int track : tracks) {
+		if (track >= 0 && track < scene.CountTracks()) {
+			scene.Select(track, true);
+			selection.AddInt32("track", track);
+		}
+	}
+	fTrackArea->SetSelection(selection);
+	fMixer->Redraw();
+	SelectionChanged();
+}
+
+void
+MainWindow::SelectionChanged()
+{
+	if (!fModern)
+		return;
+	fTrackList->Invalidate();
+	fInspector->Refresh();
 }
 
 // TWaveWindow::Switch: slides the 3D view down over the tracks (or back
@@ -258,7 +521,7 @@ void
 MainWindow::ShowControls()
 {
 	if (Lock()) {
-		if (!fControlsShown)
+		if (!fControlsShown && !fModern)
 			SwitchControls();
 		Unlock();
 	}
@@ -267,14 +530,23 @@ MainWindow::ShowControls()
 void
 MainWindow::Animate()
 {
-	fMixer->Animate(fMixerShown);
-	fStatus->SetLevel(fEngine->LeftLevel(), fEngine->RightLevel());
-	double time = 0;
+	fMixer->Animate(StageVisible());
+	// the strip draws at once, hidden or not
+	if (!fModern)
+		fStatus->SetLevel(fEngine->LeftLevel(), fEngine->RightLevel());
+	double time = 0, length = 0;
 	if (fEngine->Lock()) {
 		time = fEngine->Mixer().Time();
+		length = fEngine->Project().Length();
 		fEngine->Unlock();
 	}
 	fTrackArea->SetTime(time);
+	if (fModern) {
+		fToolbar->SetTime(time, length);
+		fToolbar->SetLevels(fEngine->LeftLevel(), fEngine->RightLevel());
+		fTrackList->Invalidate();
+		fInspector->Refresh();
+	}
 }
 
 status_t
@@ -303,6 +575,11 @@ MainWindow::OpenProject(const char* path)
 	fProjectFolder = folder.Path();
 	fProjectName = file.Leaf();
 	fTrackArea->ProjectChanged();
+	if (fModern)
+		fTrackArea->ZoomToFit();
+	ProjectNameChanged();
+	SyncModernControls();
+	SelectionChanged();
 	if (!skipped.empty()) {
 		BString text(B_TRANSLATE("These tracks couldn't be read:"));
 		for (const std::string& name : skipped)
@@ -331,6 +608,7 @@ MainWindow::SaveProject(const char* folder, const char* name)
 	info.SetType(PROJECT_TYPE);
 	fProjectFolder = folder;
 	fProjectName = name;
+	ProjectNameChanged();
 	return B_OK;
 }
 
@@ -349,7 +627,7 @@ MainWindow::SaveMix(const char* path)
 		mixer.SetMuted(i, live.IsMuted(i));
 		mixer.SetSoloed(i, live.IsSoloed(i));
 	}
-	mixer.SetMasterGain(pmx::MasterGainForSlider(fStatus->Slider()->Value()));
+	mixer.SetMasterGain(pmx::MasterGainForSlider(fMasterValue));
 	mixer.SetRange(project.selectionStart, project.selectionEnd);
 	mixer.Seek(project.selectionStart);
 	mixer.SetLoop(false);
@@ -526,6 +804,20 @@ MainWindow::RunScript(const char* script)
 				}
 				fEngine->Unlock();
 			}
+		} else if (verb == "look") {
+			// look modern|classic [stage|split|timeline]
+			SetModern(rest.StartsWith("modern"));
+			const char* modes[3] = {"stage", "split", "timeline"};
+			for (int i = 0; i < 3; i++) {
+				if (rest.FindFirst(modes[i]) >= 0)
+					SetViewMode(i);
+			}
+			printf("look %s\n", fModern ? "modern" : "classic");
+		} else if (verb == "select") {
+			std::set<int> tracks;
+			tracks.insert(atoi(rest.String()));
+			SelectTracks(tracks);
+			printf("select done\n");
 		} else if (verb == "quit") {
 			fflush(stdout);
 			be_app->PostMessage(B_QUIT_REQUESTED);
@@ -546,6 +838,7 @@ MainWindow::ProjectStructureChanged(bool keepSelection)
 		fEngine->Unlock();
 	}
 	fTrackArea->ProjectChanged(keepSelection);
+	SelectionChanged();
 }
 
 void
@@ -638,11 +931,87 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgShowHideMixer:
-			SwitchMixer();
+			// in the modern look: the stage with the lanes, or the lanes alone
+			if (fModern)
+				SetViewMode(fViewMode == 2 ? 1 : 2);
+			else
+				SwitchMixer();
 			break;
 		case kMsgShowHideControls:
-			SwitchControls();
+			if (!fModern)
+				SwitchControls();
 			break;
+
+		case kMsgModernLook:
+			SetModern(!fModern);
+			break;
+		case kMsgViewMode:
+		{
+			int32 mode;
+			if (message->FindInt32("mode", &mode) == B_OK)
+				SetViewMode(mode);
+			break;
+		}
+		case kMsgSeekStart:
+			if (fEngine->Lock()) {
+				fEngine->Mixer().Seek(fEngine->Project().selectionStart);
+				fEngine->Unlock();
+			}
+			break;
+		case kMsgSelectTrack:
+		{
+			int32 track;
+			if (message->FindInt32("track", &track) != B_OK)
+				break;
+			std::set<int> tracks;
+			if (message->GetBool("extend", false)) {
+				for (int i = 0; i < fMixer->Scene().CountTracks(); i++) {
+					if (fMixer->Scene().IsSelected(i))
+						tracks.insert(i);
+				}
+				if (tracks.count(track) > 0)
+					tracks.erase(track);
+				else
+					tracks.insert(track);
+			} else
+				tracks.insert(track);
+			SelectTracks(tracks);
+			break;
+		}
+		case kMsgToggleMute:
+		case kMsgToggleSolo:
+		{
+			int32 track;
+			if (message->FindInt32("track", &track) != B_OK || track < 0 || !fEngine->Lock())
+				break;
+			pmx::Mixer& mixer = fEngine->Mixer();
+			if (size_t(track) < fEngine->Project().tracks.size()) {
+				if (message->what == kMsgToggleMute)
+					mixer.SetMuted(size_t(track), !mixer.IsMuted(size_t(track)));
+				else
+					mixer.SetSoloed(size_t(track), !mixer.IsSoloed(size_t(track)));
+			}
+			fEngine->Unlock();
+			fTrackArea->RedrawLanes();
+			SelectionChanged();
+			break;
+		}
+		case kMsgSetBeats:
+		{
+			int32 beats;
+			if (message->FindInt32("beats", &beats) == B_OK) {
+				fTrackArea->SetBeats(beats);
+				SyncModernControls();
+			}
+			break;
+		}
+		case kMsgZoomStage:
+		{
+			int32 direction;
+			if (message->FindInt32("dir", &direction) == B_OK)
+				fMixer->Zoom(direction);
+			break;
+		}
 
 		case kMsgMuteSelection:
 			fMixer->MuteSelection();
@@ -698,7 +1067,7 @@ MainWindow::MessageReceived(BMessage* message)
 			// do_add_channel(char*, TrackViewer*): where the pointer is on
 			// the floor, if it's over the 3D view
 			float x = 0, y = 100;
-			if (fMixerShown)
+			if (StageVisible())
 				fMixer->FloorUnderPointer(x, y);
 			if (fEngine->Lock()) {
 				size_t index = fEditor->NewTrack(B_TRANSLATE("untitled"));
@@ -757,8 +1126,10 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgSetTicks:
 		{
 			float ticks;
-			if (message->FindFloat("ticks", &ticks) == B_OK)
+			if (message->FindFloat("ticks", &ticks) == B_OK) {
 				fTrackArea->SetTicks(ticks);
+				SyncModernControls();
+			}
 			break;
 		}
 		case kMsgShowHideBeatMarks:
@@ -807,6 +1178,7 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgPause:
 			fEngine->SetPaused(!fEngine->IsPaused());
+			SyncModernControls();
 			break;
 
 		case kMsgMasterChanged:
@@ -815,14 +1187,21 @@ MainWindow::MessageReceived(BMessage* message)
 			if (message->FindFloat("value", &value) == B_OK && fEngine->Lock()) {
 				fEngine->Mixer().SetMasterGain(pmx::MasterGainForSlider(value));
 				fEngine->Unlock();
+				// both looks' sliders follow
+				fMasterValue = value;
+				fStatus->Slider()->SetValue(value);
+				if (fToolbar != NULL)
+					fToolbar->SetMaster(value);
 			}
 			break;
 		}
 		case kMsgMixerSelection:
 			fTrackArea->SetSelection(*message);
+			SelectionChanged();
 			break;
 		case kMsgMuteSoloChanged:
 			fTrackArea->RedrawLanes();
+			SelectionChanged();
 			break;
 		case kMsgTrackSelection:
 		{
@@ -831,6 +1210,7 @@ MainWindow::MessageReceived(BMessage* message)
 			int32 track;
 			for (int32 i = 0; message->FindInt32("track", i, &track) == B_OK; i++)
 				scene.Select(track, true);
+			SelectionChanged();
 			break;
 		}
 
@@ -842,6 +1222,12 @@ MainWindow::MessageReceived(BMessage* message)
 bool
 MainWindow::QuitRequested()
 {
+	if (fModern)
+		fSettings.modernFrame = Frame();
+	else
+		fSettings.classicFrame = Frame();
+	fSettings.modern = fModern;
+	fSettings.Save();
 	be_app->PostMessage(B_QUIT_REQUESTED);
 	return true;
 }

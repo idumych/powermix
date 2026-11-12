@@ -5,11 +5,17 @@
 #include <Messenger.h>
 #include <String.h>
 
+#include <set>
 #include <vector>
 #include <Window.h>
 
+#include "Look.h"
+
 class AudioEngine;
 class BFilePanel;
+class InspectorView;
+class ToolbarView;
+class TrackListView;
 class BMenuItem;
 class BMessageRunner;
 class MixerView;
@@ -25,11 +31,16 @@ public:
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
 	virtual void MenusBeginning();
+	virtual void FrameResized(float width, float height);
 
 	status_t OpenProject(const char* path);
 	// The controls slide in at start (TSoundApplication calls Switch_H)
 	void ShowControls();
 	void RunScript(const char* script);
+
+	// Display ▸ Modern look: the same views in a darker layout with a
+	// toolbar, a track list and an inspector
+	void SetModern(bool modern);
 
 private:
 	void BuildMenus(BRect& menuFrame);
@@ -41,6 +52,15 @@ private:
 	void ShowError(const char* text);
 	void ProjectStructureChanged(bool keepSelection = false);
 	void DropRefs(BMessage* message);
+	void BuildModern();
+	void LayoutModern();
+	void ResizeKeepingPlace(BRect size);
+	void SetViewMode(int mode);
+	bool StageVisible() const;
+	void SelectTracks(const std::set<int>& tracks);
+	void SelectionChanged();
+	void ProjectNameChanged();
+	void SyncModernControls();
 
 	AudioEngine* fEngine;
 	BView* fOuter;		// 0x180: the strip and the inner view
@@ -68,6 +88,22 @@ private:
 	bool fControlsShown;	// 0x194
 	BString fProjectFolder;
 	BString fProjectName;
+	float fMasterValue;		// the master slider's, 0 (full) to 100
+
+	Settings fSettings;
+	bool fModern;
+	int fViewMode;			// 0 stage, 1 split, 2 timeline
+	BMenuItem* fModernItem;
+	BMenuItem* fControlsItem;
+	BView* fModernRoot;
+	ToolbarView* fToolbar;
+	TrackListView* fTrackList;
+	InspectorView* fInspector;
+	BView* fStageFrame;
+	BView* fTimelineFrame;
+	BRect fClassicTrackFrame;	// the track area's frame in the classic layout
+	float fClassicZoom;
+	float fClassicViewStart;
 };
 
 #endif

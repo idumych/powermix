@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <algorithm>
 
@@ -24,6 +25,7 @@
 #include "EditWindow.h"
 #include "Edit.h"
 #include "Importer.h"
+#include "WaveReader.h"
 #include "MixerView.h"
 #include "PowerMix.h"
 #include "StatusView.h"
@@ -61,6 +63,7 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 	fOuter->AddChild(fInner);
 	fInner->ScrollBy(0, kMixerHeight);
 	fInner->SetViewColor(B_TRANSPARENT_COLOR);
+	fOuter->SetViewColor(120, 120, 120);	// the gap beside the strip
 
 	fMixer = new MixerView(BRect(0, 0, 1023, kMixerHeight), engine);
 	fInner->AddChild(fMixer);
@@ -455,6 +458,83 @@ MainWindow::DropRefs(BMessage* message)
 		ProjectStructureChanged(true);
 }
 
+// --do 'open PATH; dump; export PATH; drop PATH LANE TIME; quit': for
+// tests. Results go to stdout as key=value lines.
+void
+MainWindow::RunScript(const char* script)
+{
+	BString all(script);
+	int32 start = 0;
+	while (start <= all.Length()) {
+		int32 end = all.FindFirst(';', start);
+		if (end < 0)
+			end = all.Length();
+		BString command;
+		all.CopyInto(command, start, end - start);
+		command.Trim();
+		start = end + 1;
+		if (command.Length() == 0)
+			continue;
+		BString verb = command;
+		int32 space = command.FindFirst(' ');
+		BString rest;
+		if (space > 0) {
+			verb.Truncate(space);
+			command.CopyInto(rest, space + 1, command.Length() - space - 1);
+			rest.Trim();
+		}
+		if (verb == "open") {
+			printf("open %s\n", OpenProject(rest.String()) == B_OK ? "ok" : "failed");
+		} else if (verb == "export") {
+			status_t status = SaveMix(rest.String());
+			pmx::DecodedSound sound;
+			if (status == B_OK && pmx::ReadWave(rest.String(), sound)) {
+				double energy = 0;
+				for (float v : sound.samples)
+					energy += double(v) * v * 32768.0 * 32768.0;
+				printf("export frames=%zu rms=%.0f\n", sound.Frames(),
+					sqrt(energy / std::max<size_t>(1, sound.samples.size())));
+			} else
+				printf("export failed\n");
+		} else if (verb == "drop") {
+			// drop PATH LANE TIME
+			BString path = rest, lane = "-1", time = "0";
+			int32 a = rest.FindLast(' ');
+			if (a > 0) {
+				rest.CopyInto(time, a + 1, rest.Length() - a - 1);
+				path.Truncate(a);
+				int32 b = path.FindLast(' ');
+				if (b > 0) {
+					path.CopyInto(lane, b + 1, path.Length() - b - 1);
+					path.Truncate(b);
+				}
+			}
+			BMessage drop(kMsgDropRefs);
+			drop.AddString("refs", path.String());
+			drop.AddInt32("lane", atoi(lane.String()));
+			drop.AddFloat("time", float(atof(time.String())));
+			DropRefs(&drop);
+			printf("drop done\n");
+		} else if (verb == "dump") {
+			if (fEngine->Lock()) {
+				const pmx::Project& project = fEngine->Project();
+				printf("tracks=%zu length=%.2f\n", project.tracks.size(), project.Length());
+				for (size_t i = 0; i < project.tracks.size(); i++) {
+					printf("track %zu name=%s clips=%zu x=%.1f y=%.1f\n", i,
+						project.tracks[i].name.c_str(), project.tracks[i].clips.size(),
+						project.tracks[i].x, project.tracks[i].y);
+				}
+				fEngine->Unlock();
+			}
+		} else if (verb == "quit") {
+			fflush(stdout);
+			be_app->PostMessage(B_QUIT_REQUESTED);
+		} else
+			printf("unknown command: %s\n", verb.String());
+		fflush(stdout);
+	}
+}
+
 // After tracks were added, deleted or undone: the mixer and both views
 // start again from the project
 void
@@ -715,6 +795,13 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgDropRefs:
 			DropRefs(message);
 			break;
+		case kMsgRunScript:
+		{
+			const char* script;
+			if (message->FindString("script", &script) == B_OK)
+				RunScript(script);
+			break;
+		}
 		case kMsgClipsChanged:
 			fTrackArea->RedrawLanes();
 			break;

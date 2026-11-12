@@ -29,6 +29,7 @@ public:
 	status_t OpenProject(const char* path);
 	// The controls slide in at start (TSoundApplication calls Switch_H)
 	void ShowControls();
+	void RunScript(const char* script);
 
 private:
 	void BuildMenus(BRect& menuFrame);

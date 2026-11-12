@@ -50,7 +50,8 @@ enum {
 	kMsgEditClip = 'EdCl',
 	kMsgClipsChanged = 'ClCh',
 	kMsgSetTicks = 'STik',
-	kMsgDropRefs = 'Drop'
+	kMsgDropRefs = 'Drop',
+	kMsgRunScript = 'Grun'
 };
 
 #endif

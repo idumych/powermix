@@ -28,7 +28,10 @@ SRCS     := $(CORE_SRCS) $(wildcard src/app/*.cpp)
 INCLUDES := src/core src/app
 # Libraries beyond the Haiku API (same on every platform), e.g. -lsqlite3 -lcrypto.
 # An app that uses B_TRANSLATE needs -llocalestub (Haiku and Hokku both ship it).
-APP_LIBS := -lmedia -llocalestub
+# LOCALESTUB: Hokku's Arch package ships a broken liblocalestub.a; build with
+# LOCALESTUB=<object of hokku/src/kits/locale/CatalogStub.cpp> there
+LOCALESTUB ?= -llocalestub
+APP_LIBS := -lmedia $(LOCALESTUB)
 # Files the .rdef imports (icons, PNG resources), so changing one rebuilds
 RSRC_DEPS :=
 

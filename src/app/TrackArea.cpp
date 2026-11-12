@@ -815,7 +815,12 @@ TrackArea::TrackArea(BRect frame, AudioEngine* engine)
 
 	fTicks = new BTextControl(BRect(15, 9, 65, 22), "Ticks:", "Ticks:", "",
 		new BMessage(kMsgTicks), B_FOLLOW_LEFT | B_FOLLOW_TOP);
-	fTicks->SetDivider(fTicks->StringWidth("Ticks:") + 2);
+	// BeOS drew these in its 10-point plain font; the frames are 3dmiX's
+	BFont small(be_plain_font);
+	small.SetSize(10);
+	fTicks->SetFont(&small);
+	fTicks->TextView()->SetFontAndColor(&small);
+	fTicks->SetDivider(small.StringWidth("Ticks:") + 2);
 	AddChild(fTicks);
 
 	BPopUpMenu* menu = new BPopUpMenu("beats");
@@ -829,10 +834,9 @@ TrackArea::TrackArea(BRect frame, AudioEngine* engine)
 	menu->ItemAt(1)->SetMarked(true);
 	fBeats = new BMenuField(BRect(68, 8, 111, 26), "beats", NULL, menu,
 		B_FOLLOW_LEFT | B_FOLLOW_TOP);
-	BFont font(be_plain_font);
-	font.SetSize(10);
-	fBeats->SetFont(&font);
-	fBeats->MenuBar()->SetFont(&font);
+	fBeats->SetFont(&small);
+	fBeats->MenuBar()->SetFont(&small);
+	fBeats->Menu()->SetFont(&small);
 	AddChild(fBeats);
 
 	fRuler = new TimeRuler(BRect(130, 1, width, 40), this);

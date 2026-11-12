@@ -7,6 +7,8 @@
 #include <Path.h>
 #include <Screen.h>
 
+#include <cstring>
+
 #include "AboutWindow.h"
 #include "AudioEngine.h"
 #include "MainWindow.h"
@@ -62,6 +64,12 @@ App::ArgvReceived(int32 argc, char** argv)
 	if (message == NULL || message->FindString("cwd", &cwd) != B_OK)
 		cwd = NULL;
 	for (int32 i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--do") == 0 && i + 1 < argc) {
+			BMessage run(kMsgRunScript);
+			run.AddString("script", argv[++i]);
+			fWindow->PostMessage(&run);
+			continue;
+		}
 		BPath path;
 		if (argv[i][0] == '/' || cwd == NULL)
 			path.SetTo(argv[i]);

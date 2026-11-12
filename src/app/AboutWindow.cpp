@@ -149,7 +149,7 @@ public:
 		// cleared directly: a FillRect would reach the app_server after the
 		// dots are written
 		uint32* bits = static_cast<uint32*>(fBitmap->Bits());
-		for (int32 i = 0; i < fBitmap->BitsLength() / 4; i++)
+		for (int32 i = 0; i < int32(fBitmap->BitsLength() / 4); i++)
 			bits[i] = 0xff000000;
 		const int32 stride = fBitmap->BytesPerRow() / 4;
 		for (const Dot& d : fDots) {

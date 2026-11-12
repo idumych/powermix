@@ -51,11 +51,11 @@ public:
 	SoundView(BRect frame, EditWindow* window)
 		:
 		BView(frame, "edit view", B_FOLLOW_ALL_SIDES, B_WILL_DRAW | B_FRAME_EVENTS),
+		fSelFrom(0),
+		fSelTo(0),
 		fWindow(window),
 		fFramesPerPixel(64),
 		fStart(0),
-		fSelFrom(0),
-		fSelTo(0),
 		fTracking(false)
 	{
 		SetViewColor(B_TRANSPARENT_COLOR);

@@ -1,0 +1,3 @@
+PowerMix is a 3D sound mixer in the spirit of 3dmiX, the mixer that came with BeOS 5. Each track of a mix stands as a column on a floor in front of the listener: drag a track left or right to pan it, nearer or farther to make it louder or quieter, and hear where it sits. The columns pulse with the music.
+
+Below the 3D view, tracks are arranged in lanes of looping clips, with a time ruler, tempo ticks and a sound editor with echo, chorus, metal, fade and compression. PowerMix opens and saves 3dmiX's .3dmix projects, including the sample mixes that came with BeOS 5, and saves the mix as a WAVE file.

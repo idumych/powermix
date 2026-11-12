@@ -61,7 +61,11 @@ enum {
 	kMsgToggleMute = 'TgMu',	// "track"
 	kMsgToggleSolo = 'TgSo',	// "track"
 	kMsgSetBeats = 'SBet',		// "beats"
-	kMsgZoomStage = 'ZmSt'		// "dir": 1 in, -1 out, 0 reset the angle
+	kMsgZoomStage = 'ZmSt',		// "dir": 1 in, -1 out, 0 reset the angle
+
+	// recording
+	kMsgRecord = 'Recd',		// Tracks > Record: start or stop a take
+	kMsgToggleArm = 'TgAr',		// "track"; without one, the selected track
 };
 
 #endif

@@ -56,6 +56,11 @@ public:
 	bool BeatMarks() const { return fBeatMarks; }
 	std::set<int> SelectedTracks() const;
 	void SetBeats(int beats);
+	// The track armed for recording (-1: none) and the take being recorded
+	// into `track` (the track count: a new one) from start to end
+	void SetArmed(int track);
+	void SetRecording(int track, double start, double end);
+	void ClearRecording();
 
 	// The modern look: dark, the Ticks box moves to the toolbar, the lanes
 	// as wide as the view
@@ -83,6 +88,9 @@ private:
 	float fRotation;
 	bool fBeatMarks = true;
 	bool fModernControls = false;	// the slim scroll bars show
+	int fArmed = -1;
+	int fTakeTrack = -1;			// recording into it; -1: not recording
+	double fTakeStart = 0, fTakeEnd = 0;
 	float fSecondsPerPixel;
 	float fViewStart;		// seconds at the lanes' left edge
 };

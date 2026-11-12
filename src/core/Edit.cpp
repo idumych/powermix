@@ -227,6 +227,24 @@ Editor::DeleteTracks(const std::set<size_t>& tracks)
 	}
 }
 
+size_t
+PlaceRecording(Track& track, float start, Clip take)
+{
+	start = std::max(0.0f, start);
+	SetClipPos(take, start, 0);
+	size_t index = 0;
+	while (index < track.clips.size() && track.clips[index].start < start) {
+		Clip& before = track.clips[index];
+		// playing when the take began: it stops there
+		if (before.end > start)
+			SetClipLength(before, start - before.start, 0);
+		index++;
+	}
+	track.clips.insert(track.clips.begin() + long(index), std::move(take));
+	RedoTime(track);
+	return index;
+}
+
 Clip
 MakeClip(const std::string& source, std::vector<int16_t> samples)
 {

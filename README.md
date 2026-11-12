@@ -36,6 +36,14 @@ including the sample mixes that came with BeOS 5.
   anywhere else (a new track). WAVE files (PCM, and MS ADPCM as the BeOS
   sample sounds use) are read by PowerMix itself; other formats go through
   the Media Kit.
+- **Recording** (Tracks ▸ Record, Alt-R; Ctrl-R on Linux): arm a track
+  (its R in the modern look's track list, or Tracks ▸ Arm selected track
+  for recording), press record and play along: the mix plays while the
+  default audio input is recorded, and the take becomes a clip in the armed
+  track where you started. A clip playing at that moment ends there, clips
+  the take reaches are pushed back, and Undo removes it. With no track
+  armed the take gets a track of its own. It stops by itself where the loop
+  starts over. Not on Haiku arm64, which has no Media Kit yet.
 - **The sound editor** (double-click a clip): select, cut, copy, paste, and
   the filters Zero, Change volume, Max volume, Echo, Chorus, Metal, Fade and
   Compress, done as 3dmiX did them.
@@ -94,7 +102,8 @@ Not (yet) like the original:
 ## Building
 
 Haiku: `make` (needs the Media Kit, which Haiku has). Linux with Hokku:
-`make COSMOE_ROOT=/usr`. Host tests on any system: `make test` (more of
+`make COSMOE_ROOT=/usr` (recording needs a Hokku with `BMediaRecorder`,
+from November 2026 on). Host tests on any system: `make test` (more of
 them run when a copy of the BeOS 5 sample mixes is in
 `vm/orig/boot/optional/sound/3D Mixes`).
 

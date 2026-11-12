@@ -83,6 +83,25 @@ int main()
 	Clip made = MakeClip("x.wav", s);
 	CHECK(made.source == "x.wav" && NEAR(made.loopOut, 0.01f));	// at least 0.01 s
 
+	// a recording: clips 0-2 and 4-6, a 3 s take from 1 s
+	Track r;
+	r.clips.push_back(MakeClip(0, 2, 2));
+	r.clips.push_back(MakeClip(4, 6, 2));
+	Clip take = MakeClip(0, 3, 3);
+	size_t at = PlaceRecording(r, 1, take);
+	CHECK(at == 1 && r.clips.size() == 3);
+	CHECK(NEAR(r.clips[0].end, 1));					// cut where the take began
+	CHECK(NEAR(r.clips[1].start, 1) && NEAR(r.clips[1].end, 4));
+	CHECK(NEAR(r.clips[2].start, 4) && NEAR(r.clips[2].end, 6));	// not reached: stays
+	// a take reaching a later clip pushes it back
+	at = PlaceRecording(r, 3.5f, MakeClip(0, 1, 1));
+	CHECK(at == 2 && NEAR(r.clips[1].end, 3.5f) && NEAR(r.clips[2].start, 3.5f));
+	CHECK(NEAR(r.clips[3].start, 4.5f) && NEAR(r.clips[3].end, 6.5f));
+	// into an empty track, and before every clip
+	Track empty;
+	CHECK(PlaceRecording(empty, 2, MakeClip(0, 1, 1)) == 0 && NEAR(empty.clips[0].start, 2));
+	CHECK(PlaceRecording(empty, 0, MakeClip(0, 0.5f, 0.5f)) == 0 && NEAR(empty.clips[1].start, 2));
+
 	printf(sFailures ? "%d FAILED\n" : "all passed\n", sFailures);
 	return sFailures ? 1 : 0;
 }

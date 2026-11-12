@@ -209,6 +209,9 @@ DrawIcon(BView* view, ModernButton::Icon icon, BPoint p, rgb_color ink)
 			view->StrokeLine(at(4, 6), at(8, 10));
 			view->StrokeLine(at(8, 10), at(12, 6));
 			break;
+		case ModernButton::kIconRecord:
+			view->FillEllipse(at(8, 8), 5, 5);
+			break;
 		case ModernButton::kNoIcon:
 			break;
 	}
@@ -239,6 +242,16 @@ ModernButton::Draw(BRect updateRect)
 			line = fill;
 			ink = on ? kText : kMuted;
 			break;
+		case kRecord:
+			// red while recording; a red dot on grey otherwise
+			fill = on ? rgb_color{226, 68, 68, 255} : kRaised;
+			if (down)
+				fill = Mix(fill, kText, 0.1f);
+			line = on ? fill : kBorder;
+			// the record button's dot is red; a labelled button's text isn't
+			ink = on || (Label() != NULL && Label()[0] != '\0') ? kText
+				: rgb_color{255, 107, 107, 255};
+			break;
 		case kOverlay:
 			fill = on ? kAccentDim : rgb_color{14, 17, 25, 255};
 			line = on ? kAccentLine : rgb_color{38, 44, 57, 255};
@@ -257,9 +270,13 @@ ModernButton::Draw(BRect updateRect)
 	if (!IsEnabled())
 		ink = Mix(ink, fill, 0.55f);
 
-	if (fKind == kPrimary && fabsf(b.Width() - b.Height()) < 1) {
+	if ((fKind == kPrimary || fKind == kRecord) && fabsf(b.Width() - b.Height()) < 1) {
 		SetHighColor(fill);
 		FillEllipse(b);
+		if (fKind == kRecord && !on) {
+			SetHighColor(line);
+			StrokeEllipse(b);
+		}
 	} else {
 		FillRound(this, b, 7, fill);
 		if (fKind != kSegment)
@@ -568,7 +585,8 @@ ToolbarView::ToolbarView(BRect frame)
 	fTime(0),
 	fLength(0),
 	fLeft(0),
-	fRight(0)
+	fRight(0),
+	fRecording(false)
 {
 	fStart = new ModernButton(BRect(0, 11, 33, 44), "start", "", new BMessage(kMsgSeekStart),
 		ModernButton::kIconStart);
@@ -576,6 +594,9 @@ ToolbarView::ToolbarView(BRect frame)
 	fPlay = new ModernButton(BRect(0, 8, 39, 47), "pause", "", new BMessage(kMsgPause),
 		ModernButton::kIconPause, ModernButton::kPrimary);
 	AddChild(fPlay);
+	fRecord = new ModernButton(BRect(0, 11, 33, 44), "record", "", new BMessage(kMsgRecord),
+		ModernButton::kIconRecord, ModernButton::kRecord);
+	AddChild(fRecord);
 	fTicks = new ValueField(BRect(0, 13, 63, 42));
 	AddChild(fTicks);
 	fBeats = new ModernButton(BRect(0, 13, 57, 42), "beats", "4/4", new BMessage(kMsgBeatsMenu),
@@ -627,6 +648,12 @@ ToolbarView::Left() const
 	return Narrow() ? 52 : 196;
 }
 
+float
+ToolbarView::TimeLeft() const
+{
+	return Left() + 138;
+}
+
 // after the time, "00:00.00 / 00:00.00", whatever the fonts' widths
 float
 ToolbarView::TicksLeft() const
@@ -636,7 +663,9 @@ ToolbarView::TicksLeft() const
 	small.SetSize(11);
 	BFont label(be_plain_font);
 	label.SetSize(12);
-	return ceilf(Left() + 96 + big.StringWidth("00:00.00") + 6 + small.StringWidth("/ 00:00.00")
+	// a narrow toolbar leaves out the length
+	return ceilf(TimeLeft() + big.StringWidth("00:00.00")
+		+ (Narrow() ? 0 : 6 + small.StringWidth("/ 00:00.00"))
 		+ 20 + label.StringWidth(B_TRANSLATE("Ticks")) + 8);
 }
 
@@ -647,6 +676,7 @@ ToolbarView::LayoutChildren()
 	const float w = Bounds().Width();
 	fStart->MoveTo(x0, 11);
 	fPlay->MoveTo(x0 + 42, 8);
+	fRecord->MoveTo(x0 + 90, 11);
 	fTicks->MoveTo(TicksLeft(), 13);
 	fBeats->MoveTo(TicksLeft() + 70, 13);
 
@@ -697,17 +727,19 @@ ToolbarView::DrawContent(BView* v, BRect b)
 		v->DrawString(project.String(), BPoint(50, 42));
 	}
 
-	const float x0 = Left();
+	// the time, red while recording
 	UseFont(v, be_fixed_font, 15);
-	v->SetHighColor(kText);
+	v->SetHighColor(fRecording ? rgb_color{255, 107, 107, 255} : kText);
 	BString now = TimeText(fTime);
-	v->DrawString(now.String(), BPoint(x0 + 96, 33));
-	float after = x0 + 96 + v->StringWidth(now.String()) + 6;
-	UseFont(v, be_fixed_font, 11);
-	v->SetHighColor(kMuted);
-	BString total("/ ");
-	total << TimeText(fLength);
-	v->DrawString(total.String(), BPoint(after, 33));
+	v->DrawString(now.String(), BPoint(TimeLeft(), 33));
+	float after = TimeLeft() + v->StringWidth(now.String()) + 6;
+	if (!Narrow()) {
+		UseFont(v, be_fixed_font, 11);
+		v->SetHighColor(kMuted);
+		BString total("/ ");
+		total << TimeText(fLength);
+		v->DrawString(total.String(), BPoint(after, 33));
+	}
 
 	UseFont(v, be_plain_font, 12);
 	v->SetHighColor(kMuted);
@@ -787,7 +819,7 @@ ToolbarView::SetTime(double time, double length)
 		return;
 	fTime = time;
 	fLength = length;
-	Invalidate(BRect(Left() + 90, 10, TicksLeft() - 40, 46));
+	Invalidate(BRect(TimeLeft() - 4, 10, TicksLeft() - 40, 46));
 }
 
 // StatusView::SetLevel's input, shown with a falling peak
@@ -833,6 +865,16 @@ ToolbarView::SetBeats(int beats)
 }
 
 void
+ToolbarView::SetRecording(bool recording, float level)
+{
+	fRecord->SetValue(recording ? B_CONTROL_ON : B_CONTROL_OFF);
+	if (recording != fRecording) {
+		fRecording = recording;
+		Invalidate(BRect(TimeLeft() - 4, 10, TicksLeft() - 40, 46));
+	}
+}
+
+void
 ToolbarView::SetMaster(float value)
 {
 	fMaster->SetValue(value);
@@ -854,11 +896,13 @@ struct RowInfo {
 
 }	// namespace
 
-TrackListView::TrackListView(BRect frame, AudioEngine* engine, MixerView* mixer)
+TrackListView::TrackListView(BRect frame, AudioEngine* engine, MixerView* mixer,
+	const RecordState* record)
 	:
 	BufferedView(frame, "track list", B_FOLLOW_LEFT | B_FOLLOW_TOP_BOTTOM),
 	fEngine(engine),
 	fMixer(mixer),
+	fRecord(record),
 	fScroll(0)
 {
 	ModernButton* add = new ModernButton(BRect(frame.Width() - 40, 9, frame.Width() - 12, 37),
@@ -878,6 +922,13 @@ TrackListView::MuteFrame(BRect row) const
 {
 	float mid = floorf((row.top + row.bottom) / 2);
 	return BRect(row.right - 62, mid - 13, row.right - 37, mid + 12);
+}
+
+BRect
+TrackListView::ArmFrame(BRect row) const
+{
+	float mid = floorf((row.top + row.bottom) / 2);
+	return BRect(row.right - 92, mid - 13, row.right - 67, mid + 12);
 }
 
 BRect
@@ -939,39 +990,48 @@ TrackListView::DrawContent(BView* v, BRect b)
 		FillRound(v, BRect(r.left + 10, mid - 5, r.left + 19, mid + 4), 3,
 			row.muted ? Mix(color, kPanel, 0.6f) : color);
 
-		BRect mute = MuteFrame(r), solo = SoloFrame(r);
-		const float textRight = mute.left - 8;
+		BRect arm = ArmFrame(r), mute = MuteFrame(r), solo = SoloFrame(r);
+		const bool armed = fRecord != NULL && fRecord->armed == int(i);
+		const float textRight = arm.left - 8;
+		// the name above; the level bar and the gain from depth below
 		UseFont(v, be_bold_font, 12);
 		v->SetHighColor(row.muted ? kMuted : kText);
 		BString name = row.name;
 		BFont font;
 		v->GetFont(&font);
+		font.TruncateString(&name, B_TRUNCATE_END, textRight - (r.left + 28));
+		v->SetDrawingMode(B_OP_OVER);
+		v->DrawString(name.String(), BPoint(r.left + 28, mid - 3));
 		BString gain = row.muted ? BString(B_TRANSLATE("muted")) : GainText(row.depth);
 		BFont small(be_fixed_font);
-		small.SetSize(10);
+		small.SetSize(9);
 		const float gainWidth = small.StringWidth(gain.String());
-		font.TruncateString(&name, B_TRUNCATE_END, textRight - (r.left + 28) - gainWidth - 6);
-		v->SetDrawingMode(B_OP_OVER);
-		v->DrawString(name.String(), BPoint(r.left + 28, mid - 2));
 		v->SetFont(&small);
 		v->SetHighColor(kMuted);
-		v->DrawString(gain.String(), BPoint(textRight - gainWidth, mid - 2));
+		v->DrawString(gain.String(), BPoint(textRight - gainWidth, mid + 12));
 		v->SetDrawingMode(B_OP_ALPHA);
 
-		BRect bar(r.left + 28, mid + 6, textRight, mid + 9);
+		BRect bar(r.left + 28, mid + 6, textRight - gainWidth - 6, mid + 9);
 		FillRound(v, bar, 1.5f, kLine);
 		float f = row.muted ? 0 : std::max(0.0f, std::min(1.0f, (row.level - 2) / 13));
 		if (f > 0)
 			FillRound(v, BRect(bar.left, bar.top, bar.left + f * bar.Width(), bar.bottom), 1.5f,
 				Mix(color, kPanel, 0.15f));
 
+		// R (armed for recording), M, S
 		UseFont(v, be_bold_font, 10);
-		const bool states[2] = {row.muted, row.soloed};
-		const BRect chips[2] = {mute, solo};
-		const char* letters[2] = {"M", "S"};
-		for (int k = 0; k < 2; k++) {
+		const bool states[3] = {armed, row.muted, row.soloed};
+		const BRect chips[3] = {arm, mute, solo};
+		const char* letters[3] = {"R", "M", "S"};
+		const rgb_color red = {255, 107, 107, 255};
+		for (int k = 0; k < 3; k++) {
 			rgb_color fill = kRaised, ink = kMuted, line = kBorder;
 			if (states[k] && k == 0) {
+				const bool live = fRecord->recording;
+				fill = live ? rgb_color{226, 68, 68, 255} : rgb_color{60, 22, 26, 255};
+				ink = live ? kText : red;
+				line = live ? fill : Mix(red, kPanel, 0.55f);
+			} else if (states[k] && k == 1) {
 				fill = kWarnDim;
 				ink = kWarn;
 				line = Mix(kWarn, kPanel, 0.6f);
@@ -1019,7 +1079,9 @@ TrackListView::MouseDown(BPoint where)
 		if (!row.Contains(where) || where.y < kListHeader - 4)
 			continue;
 		BMessage message(kMsgSelectTrack);
-		if (MuteFrame(row).InsetByCopy(-2, -2).Contains(where))
+		if (ArmFrame(row).InsetByCopy(-2, -2).Contains(where))
+			message.what = kMsgToggleArm;
+		else if (MuteFrame(row).InsetByCopy(-2, -2).Contains(where))
 			message.what = kMsgToggleMute;
 		else if (SoloFrame(row).InsetByCopy(-2, -2).Contains(where))
 			message.what = kMsgToggleSolo;
@@ -1069,21 +1131,26 @@ const float kCardHeight = 50;
 
 }	// namespace
 
-InspectorView::InspectorView(BRect frame, AudioEngine* engine, MixerView* mixer)
+InspectorView::InspectorView(BRect frame, AudioEngine* engine, MixerView* mixer,
+	const RecordState* record)
 	:
 	BufferedView(frame, "inspector", B_FOLLOW_RIGHT | B_FOLLOW_TOP_BOTTOM),
 	fEngine(engine),
 	fMixer(mixer),
+	fRecord(record),
 	fDragging(-1)
 {
 	fMute = new ModernButton(BRect(0, 0, 60, 33), "mute", B_TRANSLATE("Mute"),
 		new BMessage(kMsgToggleMute));
 	fSolo = new ModernButton(BRect(0, 0, 60, 33), "solo", B_TRANSLATE("Solo"),
 		new BMessage(kMsgToggleSolo));
+	fArm = new ModernButton(BRect(0, 0, 60, 33), "arm", B_TRANSLATE("Arm"),
+		new BMessage(kMsgToggleArm), ModernButton::kNoIcon, ModernButton::kRecord);
 	fEdit = new ModernButton(BRect(0, 0, 60, 33), "edit", B_TRANSLATE("Edit sound"),
 		new BMessage(kMsgEditClip));
 	AddChild(fMute);
 	AddChild(fSolo);
+	AddChild(fArm);
 	AddChild(fEdit);
 	LayoutChildren();
 }
@@ -1100,14 +1167,16 @@ InspectorView::LayoutChildren()
 {
 	BRect pad = PadFrame();
 	const float top = pad.bottom + 26 + 2 * kCardHeight + 8 + 14;
+	// Mute, Solo, Arm; Edit sound below
 	const float w = pad.Width();
-	const float small = floorf((w - 16) * 0.28f);
-	fMute->ResizeTo(small, 33);
-	fSolo->ResizeTo(small, 33);
-	fEdit->ResizeTo(w - 2 * small - 16, 33);
-	fMute->MoveTo(pad.left, top);
-	fSolo->MoveTo(pad.left + small + 8, top);
-	fEdit->MoveTo(pad.left + 2 * small + 16, top);
+	const float third = floorf((w - 16) / 3);
+	ModernButton* row[3] = {fMute, fSolo, fArm};
+	for (int i = 0; i < 3; i++) {
+		row[i]->ResizeTo(i < 2 ? third : w - 2 * third - 16, 33);
+		row[i]->MoveTo(pad.left + i * (third + 8), top);
+	}
+	fEdit->ResizeTo(w, 33);
+	fEdit->MoveTo(pad.left, top + 41);
 }
 
 void
@@ -1166,8 +1235,9 @@ InspectorView::Refresh()
 		signature << int32(project.tracks.size()) << "|";
 		fEngine->Unlock();
 	}
-	signature << selected << "|" << int32(muted) << int32(soloed) << "|" << int32(clips) << "|"
-		<< name;
+	const bool armed = selected >= 0 && fRecord->armed == selected;
+	signature << selected << "|" << int32(muted) << int32(soloed) << int32(armed) << "|"
+		<< int32(clips) << "|" << name;
 	for (int i = 0; i < scene.CountTracks(); i++) {
 		float x, y;
 		scene.GetPosition(i, x, y);
@@ -1180,6 +1250,11 @@ InspectorView::Refresh()
 	const bool have = selected >= 0;
 	fMute->SetEnabled(have);
 	fSolo->SetEnabled(have);
+	fArm->SetEnabled(have);
+	fArm->SetValue(armed ? B_CONTROL_ON : B_CONTROL_OFF);
+	BMessage arm(kMsgToggleArm);
+	arm.AddInt32("track", selected);
+	fArm->SetMessage(new BMessage(arm));
 	fEdit->SetEnabled(have && clips > 0);
 	fMute->SetValue(muted ? B_CONTROL_ON : B_CONTROL_OFF);
 	fSolo->SetValue(soloed ? B_CONTROL_ON : B_CONTROL_OFF);
@@ -1310,7 +1385,7 @@ InspectorView::DrawContent(BView* v, BRect b)
 	}
 
 	// how it works, at the bottom if there's room
-	const float buttonsBottom = fMute->Frame().bottom;
+	const float buttonsBottom = fEdit->Frame().bottom;
 	UseFont(v, be_plain_font, 11);
 	std::vector<BString> lines = Wrap(v, selected >= 0
 		? B_TRANSLATE("Nearer is louder; left and right pan and delay the far ear. "

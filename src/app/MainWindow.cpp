@@ -61,6 +61,10 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 	fInspector(NULL),
 	fStageFrame(NULL),
 	fTimelineFrame(NULL),
+	fTakeStart(0),
+	fLastTime(0),
+	fRecordItem(NULL),
+	fArmItem(NULL),
 	fClassicZoom(1.0f / 14),
 	fClassicViewStart(0)
 {
@@ -168,6 +172,11 @@ MainWindow::BuildMenus(BRect& menuFrame)
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Delete tracks"), new BMessage(kMsgDeleteTracks)));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Select all tracks"),
 		new BMessage(kMsgSelectAllTracks), 'A'));
+	menu->AddSeparatorItem();
+	menu->AddItem(fArmItem = new BMenuItem(B_TRANSLATE("Arm selected track for recording"),
+		new BMessage(kMsgToggleArm)));
+	menu->AddItem(fRecordItem = new BMenuItem(B_TRANSLATE("Record"), new BMessage(kMsgRecord),
+		'R'));
 	bar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Misc"));
@@ -206,6 +215,18 @@ MainWindow::MenusBeginning()
 	fPasteItem->SetEnabled(fEditor->HasClipboard() && haveProject);
 	fFastItem->SetMarked(fTrackArea->FastDisplay());
 	fModernItem->SetMarked(fModern);
+	fRecordItem->SetMarked(fRecord.recording);
+	fRecordItem->SetEnabled(Recorder::Available());
+	bool armedSelected = false;
+	bool anySelected = false;
+	for (int i = 0; i < fMixer->Scene().CountTracks(); i++) {
+		if (fMixer->Scene().IsSelected(i)) {
+			anySelected = true;
+			armedSelected |= i == fRecord.armed;
+		}
+	}
+	fArmItem->SetEnabled(anySelected && !fRecord.recording);
+	fArmItem->SetMarked(armedSelected);
 	fControlsItem->SetEnabled(!fModern);
 }
 
@@ -225,10 +246,10 @@ MainWindow::BuildModern()
 	fToolbar = new ToolbarView(BRect(0, 0, w, ToolbarView::kHeight - 1));
 	fModernRoot->AddChild(fToolbar);
 	fTrackList = new TrackListView(BRect(0, ToolbarView::kHeight, TrackListView::kWidth - 1, h),
-		fEngine, fMixer);
+		fEngine, fMixer, &fRecord);
 	fModernRoot->AddChild(fTrackList);
 	fInspector = new InspectorView(BRect(w - InspectorView::kWidth + 1, ToolbarView::kHeight, w,
-		h), fEngine, fMixer);
+		h), fEngine, fMixer, &fRecord);
 	fModernRoot->AddChild(fInspector);
 	// the 3D view and the lanes sit in frames whose colour is their border
 	fStageFrame = new BView(BRect(0, 0, 10, 10), "stage", B_FOLLOW_NONE, 0);
@@ -298,6 +319,94 @@ MainWindow::SetModern(bool modern)
 	EnableUpdates();
 	if (fModern && StageVisible())
 		fMixer->MakeFocus(true);
+}
+
+// #pragma mark - Recording
+
+void
+MainWindow::SetArmed(int track)
+{
+	if (fRecord.recording)
+		return;
+	fRecord.armed = track;
+	fTrackArea->SetArmed(track);
+	SelectionChanged();
+}
+
+void
+MainWindow::StartRecording()
+{
+	if (fRecord.recording)
+		return;
+	if (!Recorder::Available()) {
+		ShowError(B_TRANSLATE("Recording needs the Media Kit, which this system doesn't "
+			"have."));
+		return;
+	}
+	float start = 0;
+	if (fEngine->Lock()) {
+		start = float(fEngine->Mixer().Time());
+		if (fRecord.armed >= int(fEngine->Project().tracks.size()))
+			fRecord.armed = -1;
+		fEngine->Unlock();
+	}
+	status_t status = fRecorder.Start();
+	if (status != B_OK) {
+		BString text;
+		text.SetToFormat(B_TRANSLATE("PowerMix couldn't record: no audio input could be "
+			"opened (%s)."), strerror(status));
+		ShowError(text.String());
+		return;
+	}
+	// you hear the mix while you record
+	if (fEngine->IsPaused())
+		fEngine->SetPaused(false);
+	fTakeStart = start;
+	fLastTime = start;
+	fRecord.recording = true;
+	SyncModernControls();
+	SelectionChanged();
+}
+
+void
+MainWindow::StopRecording()
+{
+	if (!fRecord.recording)
+		return;
+	std::vector<int16> samples = fRecorder.Stop();
+	fRecord.recording = false;
+	fRecord.level = 0;
+	fTrackArea->ClearRecording();
+	SyncModernControls();
+	if (samples.size() < size_t(pmx::kSampleRate / 100) || !fEngine->Lock()) {
+		SelectionChanged();
+		return;
+	}
+	fEditor->Commit();
+	pmx::Project& project = fEngine->Project();
+	size_t track;
+	if (fRecord.armed >= 0 && size_t(fRecord.armed) < project.tracks.size())
+		track = size_t(fRecord.armed);
+	else {
+		// no armed track: a new one in front of the listener
+		pmx::Track take;
+		take.name = pmx::UniqueTrackName(project, "take");
+		take.x = 0;
+		take.y = 100;
+		take.addedByHand = true;
+		project.tracks.push_back(take);
+		track = project.tracks.size() - 1;
+	}
+	int number = 1;
+	for (const pmx::Track& t : project.tracks)
+		for (const pmx::Clip& c : t.clips)
+			number += c.source.compare(0, 4, "take") == 0;
+	BString source;
+	source.SetToFormat("take %d", number);
+	pmx::PlaceRecording(project.tracks[track], fTakeStart, pmx::MakeClip(source.String(),
+		std::move(samples)));
+	fEngine->Unlock();
+	ProjectStructureChanged(true);
 }
 
 // The other look's size, here; moved only as far as needed to stay on
@@ -541,7 +650,23 @@ MainWindow::Animate()
 		fEngine->Unlock();
 	}
 	fTrackArea->SetTime(time);
+	if (fRecord.recording) {
+		// the take stops where the loop starts over
+		if (time + 0.05 < fLastTime)
+			StopRecording();
+		else {
+			fRecord.level = fRecorder.Level();
+			int track = fRecord.armed >= 0 ? fRecord.armed : -2;
+			if (track == -2 && fEngine->Lock()) {
+				track = int(fEngine->Project().tracks.size());
+				fEngine->Unlock();
+			}
+			fTrackArea->SetRecording(track, fTakeStart, fTakeStart + fRecorder.Seconds());
+		}
+	}
+	fLastTime = time;
 	if (fModern) {
+		fToolbar->SetRecording(fRecord.recording, fRecord.level);
 		fToolbar->SetTime(time, length);
 		fToolbar->SetLevels(fEngine->LeftLevel(), fEngine->RightLevel());
 		fTrackList->Invalidate();
@@ -813,6 +938,38 @@ MainWindow::RunScript(const char* script)
 					SetViewMode(i);
 			}
 			printf("look %s\n", fModern ? "modern" : "classic");
+		} else if (verb == "arm") {
+			SetArmed(atoi(rest.String()));
+			printf("arm %d\n", fRecord.armed);
+		} else if (verb == "record") {
+			// record SECONDS: a take of that long from the play position
+			StartRecording();
+			if (!fRecord.recording) {
+				printf("record failed\n");
+				continue;
+			}
+			snooze(bigtime_t(atof(rest.String()) * 1000000));
+			int target = fRecord.armed;
+			StopRecording();
+			if (fEngine->Lock()) {
+				const pmx::Project& project = fEngine->Project();
+				size_t t = target >= 0 ? size_t(target) : project.tracks.size() - 1;
+				int peak = 0;
+				float length = 0, start = 0;
+				for (const pmx::Clip& c : project.tracks[t].clips) {
+					if (c.source.compare(0, 4, "take") != 0)
+						continue;
+					length = pmx::ClipLength(c);
+					start = c.start;
+					peak = 0;
+					for (int16 v : c.samples)
+						peak = std::max(peak, abs(int(v)));
+				}
+				printf("record track=%zu name=%s clips=%zu take-start=%.2f take-length=%.2f "
+					"peak=%d\n", t, project.tracks[t].name.c_str(), project.tracks[t].clips.size(),
+					start, length, peak);
+				fEngine->Unlock();
+			}
 		} else if (verb == "select") {
 			std::set<int> tracks;
 			tracks.insert(atoi(rest.String()));
@@ -832,10 +989,21 @@ MainWindow::RunScript(const char* script)
 void
 MainWindow::ProjectStructureChanged(bool keepSelection)
 {
+	// rebuilding the 3D scene forgets its selection; keep it if asked
+	std::set<int> selected;
+	pmx::Scene& scene = fMixer->Scene();
+	for (int i = 0; keepSelection && i < scene.CountTracks(); i++) {
+		if (scene.IsSelected(i))
+			selected.insert(i);
+	}
 	if (fEngine->Lock()) {
 		fEngine->Mixer().Reset();
 		fMixer->SyncTracks();
 		fEngine->Unlock();
+	}
+	for (int i : selected) {
+		if (i < scene.CountTracks())
+			scene.Select(i, true);
 	}
 	fTrackArea->ProjectChanged(keepSelection);
 	SelectionChanged();
@@ -1003,6 +1171,26 @@ MainWindow::MessageReceived(BMessage* message)
 				fTrackArea->SetBeats(beats);
 				SyncModernControls();
 			}
+			break;
+		}
+		case kMsgRecord:
+			if (fRecord.recording)
+				StopRecording();
+			else
+				StartRecording();
+			break;
+		case kMsgToggleArm:
+		{
+			// a track's R, or the menu: the (first) selected track
+			int32 track = -1;
+			if (message->FindInt32("track", &track) != B_OK) {
+				for (int i = 0; i < fMixer->Scene().CountTracks() && track < 0; i++) {
+					if (fMixer->Scene().IsSelected(i))
+						track = i;
+				}
+			}
+			if (track >= 0)
+				SetArmed(track == fRecord.armed ? -1 : track);
 			break;
 		}
 		case kMsgZoomStage:
@@ -1222,6 +1410,8 @@ MainWindow::MessageReceived(BMessage* message)
 bool
 MainWindow::QuitRequested()
 {
+	if (fRecord.recording)
+		StopRecording();
 	if (fModern)
 		fSettings.modernFrame = Frame();
 	else

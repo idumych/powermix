@@ -10,6 +10,8 @@
 #include <Window.h>
 
 #include "Look.h"
+#include "ModernViews.h"
+#include "Recorder.h"
 
 class AudioEngine;
 class BFilePanel;
@@ -61,6 +63,11 @@ private:
 	void SelectionChanged();
 	void ProjectNameChanged();
 	void SyncModernControls();
+	// Tracks ▸ Record: a take from the play position into the armed track
+	// (or a new one); it stops by itself where the loop starts over
+	void StartRecording();
+	void StopRecording();
+	void SetArmed(int track);
 
 	AudioEngine* fEngine;
 	BView* fOuter;		// 0x180: the strip and the inner view
@@ -101,6 +108,12 @@ private:
 	InspectorView* fInspector;
 	BView* fStageFrame;
 	BView* fTimelineFrame;
+	Recorder fRecorder;
+	RecordState fRecord;
+	float fTakeStart;			// where the take began, seconds
+	double fLastTime;			// the mix's time at the last frame
+	BMenuItem* fRecordItem;
+	BMenuItem* fArmItem;
 	BRect fClassicTrackFrame;	// the track area's frame in the classic layout
 	float fClassicZoom;
 	float fClassicViewStart;

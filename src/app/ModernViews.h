@@ -13,19 +13,27 @@ class AudioEngine;
 class BBitmap;
 class MixerView;
 
+// Recording, as the window keeps it and the views show it
+struct RecordState {
+	int armed = -1;			// the track a take goes into; -1: a new track
+	bool recording = false;
+	float level = 0;		// the input's peak, 0..1
+};
+
 // A flat button with an icon and/or a label. A toggle shows its state
 // with SetValue(B_CONTROL_ON).
 class ModernButton : public BControl {
 public:
 	enum Icon {
 		kNoIcon, kIconStart, kIconPlay, kIconPause, kIconPlus, kIconMinus, kIconExport,
-		kIconReset, kIconChevron
+		kIconReset, kIconChevron, kIconRecord
 	};
 	enum Kind {
 		kPlain,		// raised, outlined
 		kPrimary,	// accent-filled; round when square
 		kSegment,	// one part of a segmented switch
-		kOverlay	// on top of the 3D view
+		kOverlay,	// on top of the 3D view
+		kRecord		// round, red while it's on
 	};
 
 	ModernButton(BRect frame, const char* name, const char* label, BMessage* message,
@@ -90,6 +98,7 @@ public:
 	void SetTicks(float ticks);
 	void SetBeats(int beats);
 	void SetMaster(float value);
+	void SetRecording(bool recording, float level);
 
 protected:
 	virtual void DrawContent(BView* into, BRect bounds);
@@ -98,10 +107,12 @@ private:
 	void LayoutChildren();
 	float Left() const;
 	float TicksLeft() const;
+	float TimeLeft() const;
 	bool Narrow() const;
 
 	ModernButton* fStart;
 	ModernButton* fPlay;
+	ModernButton* fRecord;
 	ModernButton* fBeats;
 	ModernButton* fSegments[3];
 	ModernButton* fExport;
@@ -111,14 +122,16 @@ private:
 	double fTime, fLength;
 	float fLeft, fRight;
 	BRect fMeter;
+	bool fRecording;
 };
 
 // The tracks down the left: colour, name, gain, level, mute and solo
 class TrackListView : public BufferedView {
 public:
-	static constexpr float kWidth = 220;
+	static constexpr float kWidth = 232;
 
-	TrackListView(BRect frame, AudioEngine* engine, MixerView* mixer);
+	TrackListView(BRect frame, AudioEngine* engine, MixerView* mixer,
+		const RecordState* record);
 
 	virtual void MouseDown(BPoint where);
 	virtual void MessageReceived(BMessage* message);
@@ -130,9 +143,11 @@ private:
 	BRect RowFrame(int index) const;
 	BRect MuteFrame(BRect row) const;
 	BRect SoloFrame(BRect row) const;
+	BRect ArmFrame(BRect row) const;
 
 	AudioEngine* fEngine;
 	MixerView* fMixer;
+	const RecordState* fRecord;
 	float fScroll;
 };
 
@@ -142,7 +157,8 @@ class InspectorView : public BufferedView {
 public:
 	static constexpr float kWidth = 260;
 
-	InspectorView(BRect frame, AudioEngine* engine, MixerView* mixer);
+	InspectorView(BRect frame, AudioEngine* engine, MixerView* mixer,
+		const RecordState* record);
 
 	virtual void FrameResized(float width, float height);
 	virtual void MouseDown(BPoint where);
@@ -166,7 +182,9 @@ private:
 	MixerView* fMixer;
 	ModernButton* fMute;
 	ModernButton* fSolo;
+	ModernButton* fArm;
 	ModernButton* fEdit;
+	const RecordState* fRecord;
 	int fDragging;
 	BString fSignature;
 };

@@ -300,6 +300,7 @@ public:
 			DrawExtra(i, project.tracks[i], lane, mixer.IsMuted(i), mixer.IsSoloed(i));
 			DrawTrack(i, project.tracks[i], lane, fSelected.count(int(i)) > 0);
 		}
+		DrawTake(project.tracks.size());
 		fArea->fEngine->Unlock();
 	}
 
@@ -315,7 +316,8 @@ public:
 		GetFont(&font);
 		font.SetSize(11);
 		SetFont(&font);
-		SetHighColor(0, 80, 180);
+		SetHighColor(int(index) == fArea->fArmed ? rgb_color{200, 0, 0, 255}
+			: rgb_color{0, 80, 180, 255});
 		SetLowColor(kBackground);
 		BString name;
 		name << int32(std::min<size_t>(index, 99)) << "-" << track.name.c_str();
@@ -341,6 +343,36 @@ public:
 		SetDrawingMode(B_OP_COPY);
 	}
 
+	// The take being recorded: a red box from where it began to now, in its
+	// track's lane or in a new lane below the others
+	void DrawTake(size_t trackCount)
+	{
+		if (fArea->fTakeTrack < 0)
+			return;
+		const size_t index = size_t(fArea->fTakeTrack);
+		BRect lane(0, LaneTop(index), Bounds().right, LaneTop(index) + kLaneHeight);
+		const float left = X(fArea->fTakeStart), right = std::max(left + 2, X(fArea->fTakeEnd));
+		BRect take(std::max(left, kClipLeft + 1), lane.top + 4, right, lane.bottom - 8);
+		if (index >= trackCount) {
+			SetHighColor(look::IsModern() ? look::kPanel : kBackground);
+			FillRect(BRect(0, lane.top - 4, Bounds().right, lane.bottom + 4));
+			SetHighColor(look::IsModern() ? rgb_color{255, 107, 107, 255}
+				: rgb_color{200, 0, 0, 255});
+			SetDrawingMode(B_OP_OVER);
+			DrawString("take", BPoint(look::IsModern() ? 26 : 12, lane.top + kLaneHeight / 2 + 4));
+			SetDrawingMode(B_OP_COPY);
+		}
+		if (!take.IsValid())
+			return;
+		SetDrawingMode(B_OP_ALPHA);
+		SetBlendingMode(B_CONSTANT_ALPHA, B_ALPHA_OVERLAY);
+		SetHighColor(226, 68, 68, 90);
+		FillRoundRect(take, 6, 6);
+		SetHighColor(226, 68, 68, 255);
+		StrokeRoundRect(take, 6, 6);
+		SetDrawingMode(B_OP_COPY);
+	}
+
 	// The modern look: a colour mark, the name, M and S chips
 	void DrawModernExtra(size_t index, const pmx::Track& track, BRect lane, bool muted,
 		bool soloed)
@@ -359,7 +391,8 @@ public:
 		SetFont(&font);
 		BString name(track.name.c_str());
 		font.TruncateString(&name, B_TRUNCATE_END, kModernMuteLeft - 34);
-		SetHighColor(muted ? look::kMuted : look::kSoft);
+		SetHighColor(int(index) == fArea->fArmed ? rgb_color{255, 107, 107, 255}
+			: muted ? look::kMuted : look::kSoft);
 		SetDrawingMode(B_OP_OVER);
 		DrawString(name.String(), BPoint(26, center + 4));
 		SetDrawingMode(B_OP_ALPHA);
@@ -1336,6 +1369,32 @@ TrackArea::SetBeats(int beats)
 	if (item != NULL)
 		item->SetMarked(true);
 	fRuler->Invalidate();
+}
+
+void
+TrackArea::SetArmed(int track)
+{
+	if (track == fArmed)
+		return;
+	fArmed = track;
+	fLanes->Invalidate();
+}
+
+void
+TrackArea::SetRecording(int track, double start, double end)
+{
+	fTakeTrack = track;
+	fTakeStart = start;
+	fTakeEnd = end;
+	fLanes->Invalidate(BRect(0, fLanes->LaneTop(size_t(std::max(0, track))) - 4,
+		fLanes->Bounds().right, fLanes->LaneTop(size_t(std::max(0, track))) + kLaneHeight + 4));
+}
+
+void
+TrackArea::ClearRecording()
+{
+	fTakeTrack = -1;
+	fLanes->Invalidate();
 }
 
 void

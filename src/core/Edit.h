@@ -35,6 +35,12 @@ void RedoTime(Track& track);
 // before it ends (or at 0)
 void InsertClip(Track& track, size_t index, Clip clip);
 
+// A recording made from `start` seconds becomes a clip there. A clip that
+// was playing at that moment ends there (the take replaces what followed),
+// and clips the take reaches are pushed back after it, so none overlap.
+// Returns the take's index in the track.
+size_t PlaceRecording(Track& track, float start, Clip take);
+
 // Clips are addressed as (track, clip index)
 typedef std::pair<size_t, size_t> ClipRef;
 typedef std::set<ClipRef> ClipSelection;

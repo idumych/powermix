@@ -57,6 +57,15 @@ Steps: `PowerMix --do 'open $FIX/demo/demo.3dmix; fade 0 0 1 1; fade 2 0 1 1; un
 PASS when: the output has `redo steps=1` (EVIDENCE_7) after `undo steps=0`,
 and the dump shows kick's fade but not bass's.
 
+### open-link
+A user's copy of the BeOS 5 sample mixes had its top-level `.3dmix` links
+flattened into files holding their target's path. Steps: in a scratch
+folder `$L` holding a copy of the demo folder as `$L/demo`, write a file
+`$L/demo.3dmix` containing just `demo/demo.3dmix`, then
+`PowerMix --do 'open $L/demo.3dmix; dump; quit'`.
+PASS when: the output has `tracks=6 ` (EVIDENCE_8): the file was followed to
+the project and its tracks were found beside it.
+
 ### record (not a gate check)
 Linux: with `COSMOE_AUDIO_CAPTURE_FILE=$FIX/click.wav`,
 `PowerMix --do 'open $FIX/demo/demo.3dmix; countin off; arm 1; record 2; dump; quit'`

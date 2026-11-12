@@ -27,6 +27,11 @@ public:
 
 	// Tracks (do_add_channel, delete_channel). Index = track number.
 	void AddTrack(const std::string& name, float x, float y);
+	// do_add_channel(char*, TrackViewer*): a track added by hand; its level
+	// bar is drawn in blue instead of green
+	void AddNewTrack(const std::string& name, float x, float y);
+	// invert_map: the floor point (x, depth) under a frame point
+	bool FloorPoint(float frameX, float frameY, float& x, float& y) const;
 	void RemoveTrack(int index);
 	void RemoveAllTracks();
 	int CountTracks() const { return int(fTracks.size()); }
@@ -121,6 +126,7 @@ private:
 	};
 
 	void BuildVectors();
+	void AddTrackWithBar(const std::string& name, float x, float y, int barMapper);
 	void Project(float x, float y, float z, float& sx, float& sy, float& depth) const;
 	void MoveTrack(int index, float dx, float dy, float dz);
 	void KeepInside();

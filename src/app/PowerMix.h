@@ -46,7 +46,10 @@ enum {
 	kMsgProjectChanged = 'PChg',
 	kMsgOpenPanelRefs = 'ORef',
 	kMsgSavePanel = 'SvPn',
-	kMsgSaveWavePanel = 'SvWv'
+	kMsgSaveWavePanel = 'SvWv',
+	kMsgEditClip = 'EdCl',
+	kMsgClipsChanged = 'ClCh',
+	kMsgSetTicks = 'STik'
 };
 
 #endif

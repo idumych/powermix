@@ -17,6 +17,7 @@
 #include <cstdio>
 
 #include "AudioEngine.h"
+#include "Edit.h"
 #include "Palette.h"
 #include "PowerMix.h"
 
@@ -165,7 +166,7 @@ public:
 
 		SetHighColor(dark ? rgb_color{40, 40, 40, 255} : rgb_color{160, 160, 160, 255});
 		FillRect(BRect(bounds.left, 28, bounds.right, bounds.bottom - 1));
-		if (ticks > 0) {
+		if (ticks > 0 && fArea->fBeatMarks) {
 			double beat = 120.0 / ticks;
 			if (beat / fArea->fSecondsPerPixel >= 2) {
 				long firstBeat = long(floor(Time(bounds.left) / beat));
@@ -274,7 +275,7 @@ public:
 			if (!lane.Intersects(updateRect))
 				continue;
 			DrawExtra(i, project.tracks[i], lane, mixer.IsMuted(i), mixer.IsSoloed(i));
-			DrawTrack(project.tracks[i], lane, fSelected.count(int(i)) > 0);
+			DrawTrack(i, project.tracks[i], lane, fSelected.count(int(i)) > 0);
 		}
 		fArea->fEngine->Unlock();
 	}
@@ -314,7 +315,7 @@ public:
 	}
 
 	// TrackViewer::InternalDraw: the lane, its clips, a bevelled frame
-	void DrawTrack(const pmx::Track& track, BRect lane, bool selected)
+	void DrawTrack(size_t index, const pmx::Track& track, BRect lane, bool selected)
 	{
 		BRect box(kClipLeft, lane.top, kClipLeft + 799, lane.top + kLaneHeight);
 		BRect visible = box & Bounds();
@@ -324,8 +325,8 @@ public:
 		FillRect(box);
 		BRegion clip(box);
 		ConstrainClippingRegion(&clip);
-		for (const pmx::Clip& c : track.clips)
-			DrawClip(c, box);
+		for (size_t k = 0; k < track.clips.size(); k++)
+			DrawClip(track.clips[k], box, fClips.count(pmx::ClipRef(index, k)) > 0);
 		ConstrainClippingRegion(NULL);
 		SetHighColor(40, 40, 40);
 		StrokeRect(box);
@@ -336,7 +337,7 @@ public:
 
 	// SimpleObject::Render: the first pass of the loop in red and green, the
 	// repeats in grey and white; the loop's end has a red handle below
-	void DrawClip(const pmx::Clip& c, BRect box)
+	void DrawClip(const pmx::Clip& c, BRect box, bool selected)
 	{
 		const float spp = fArea->fSecondsPerPixel;
 		const float top = box.top + 6, bottom = box.bottom - 8;
@@ -344,7 +345,8 @@ public:
 		if (right < box.left || left > box.right)
 			return;
 		BRect rect(left + 1, top + 1, right, bottom - 1);
-		SetHighColor(PaletteColor(25));
+		// SimpleObject::Render: palette 25, 20 when selected
+		SetHighColor(PaletteColor(selected ? 20 : 25));
 		FillRect(rect);
 
 		const float scale = ((bottom - top) / 2.5f) / 35000.0f;
@@ -454,47 +456,213 @@ public:
 
 	static bool sFastDisplay;
 
-	// do_mute_solo and selecting a track by its name
+	int LaneAt(float y) const
+	{
+		size_t count = fArea->fEngine->Project().tracks.size();
+		for (size_t i = 0; i < count; i++) {
+			if (y >= LaneTop(i) && y <= LaneTop(i) + kLaneHeight)
+				return int(i);
+		}
+		return -1;
+	}
+
+	double TimeAt(float x) const
+	{
+		return fArea->fViewStart + (x - kClipLeft - 1) * fArea->fSecondsPerPixel;
+	}
+
+	// get_ibeat: Ctrl snaps to the beat
+	float Grid() const
+	{
+		if ((modifiers() & B_CONTROL_KEY) == 0)
+			return 0;
+		float ticks = fArea->fEngine->Project().ticks;
+		return ticks > 0 ? 60.0f / ticks : 0;
+	}
+
+	void NotifySelection()
+	{
+		BMessage message(kMsgTrackSelection);
+		for (int t : fSelected)
+			message.AddInt32("track", t);
+		Window()->PostMessage(&message);
+	}
+
+	// TrackView::MouseDown/HitInViewer, do_mute_solo, TrackViewer::handle_hit
 	virtual void MouseDown(BPoint where)
 	{
+		uint32 modifiers = 0;
+		Window()->CurrentMessage()->FindInt32("modifiers", (int32*)&modifiers);
+		const bool shift = (modifiers & B_SHIFT_KEY) != 0;
 		if (!fArea->fEngine->Lock())
 			return;
-		size_t count = fArea->fEngine->Project().tracks.size();
-		int lane = -1;
-		for (size_t i = 0; i < count; i++) {
-			if (where.y >= LaneTop(i) && where.y <= LaneTop(i) + kLaneHeight)
-				lane = int(i);
-		}
+		pmx::Project& project = fArea->fEngine->Project();
 		pmx::Mixer& mixer = fArea->fEngine->Mixer();
-		bool changed = false;
+		const int lane = LaneAt(where.y);
+		bool notifyMuteSolo = false;
+		bool notifyTracks = false;
+		fDrag = kNoDrag;
+
 		if (lane >= 0 && where.x >= 110 && where.x <= 122) {
 			float center = LaneTop(size_t(lane)) + kLaneHeight / 2;
 			if (where.y < center)
 				mixer.SetMuted(size_t(lane), !mixer.IsMuted(size_t(lane)));
 			else
 				mixer.SetSoloed(size_t(lane), !mixer.IsSoloed(size_t(lane)));
-			changed = true;
-		}
-		fArea->fEngine->Unlock();
-		if (changed) {
-			Window()->PostMessage(kMsgMuteSoloChanged);
+			notifyMuteSolo = true;
 		} else if (lane >= 0 && where.x < 110) {
-			uint32 modifiers = 0;
-			Window()->CurrentMessage()->FindInt32("modifiers", (int32*)&modifiers);
-			if ((modifiers & B_SHIFT_KEY) == 0)
+			if (!shift)
 				fSelected.clear();
-			if (fSelected.count(lane) && (modifiers & B_SHIFT_KEY) != 0)
+			if (fSelected.count(lane) && shift)
 				fSelected.erase(lane);
 			else
 				fSelected.insert(lane);
-			BMessage message(kMsgTrackSelection);
-			for (int t : fSelected)
-				message.AddInt32("track", t);
-			Window()->PostMessage(&message);
+			notifyTracks = true;
+		} else if (lane >= 0 && where.x > kClipLeft) {
+			pmx::Track& track = project.tracks[size_t(lane)];
+			const double t = TimeAt(where.x);
+			// the paste position: the clip boundary nearest the click
+			fPasteTrack = size_t(lane);
+			fPasteAfter = 0;
+			float nearest = 1e10f;
+			for (size_t k = 0; k < track.clips.size(); k++) {
+				if (std::fabs(track.clips[k].start - t) <= nearest) {
+					nearest = std::fabs(track.clips[k].start - t);
+					fPasteAfter = k;
+				}
+				if (std::fabs(track.clips[k].end - t) <= nearest) {
+					nearest = std::fabs(track.clips[k].end - t);
+					fPasteAfter = k + 1;
+				}
+			}
+			int hit = -1;
+			for (size_t k = 0; k < track.clips.size(); k++) {
+				if (t >= track.clips[k].start && t <= track.clips[k].end)
+					hit = int(k);
+			}
+			if (hit < 0) {
+				// TrackViewer::handle_hit on empty lane: (de)select the track
+				if (!shift)
+					fSelected.clear();
+				if (fSelected.count(lane))
+					fSelected.erase(lane);
+				else
+					fSelected.insert(lane);
+				if (!shift)
+					fClips.clear();
+				notifyTracks = true;
+			} else {
+				pmx::ClipRef ref{size_t(lane), size_t(hit)};
+				bigtime_t now = system_time();
+				if (fLastClip == ref && now - fLastClick < 400000) {
+					// a double click edits the sound (SimpleObject::Edit)
+					BMessage edit(kMsgEditClip);
+					edit.AddInt32("track", lane);
+					edit.AddInt32("clip", hit);
+					Window()->PostMessage(&edit);
+					fArea->fEngine->Unlock();
+					return;
+				}
+				fLastClip = ref;
+				fLastClick = now;
+				if (!shift)
+					fClips.clear();
+				fClips.insert(ref);
+				const pmx::Clip& clip = track.clips[size_t(hit)];
+				fOriginal = clip;
+				fDragClip = ref;
+				fDragStart = t;
+				float left = (clip.start - fArea->fViewStart) / fArea->fSecondsPerPixel;
+				float right = (clip.end - fArea->fViewStart) / fArea->fSecondsPerPixel;
+				float x = where.x - kClipLeft - 1;
+				if (where.y > LaneTop(size_t(lane)) + kLaneHeight - 8)
+					fDrag = kLoopHandle;		// TrackViewer::ChangeGizmos
+				else if (right - left > 16 && x - left < 8)
+					fDrag = kTrimStart;
+				else if (right - left > 16 && right - x < 8)
+					fDrag = kTrimEnd;
+				else
+					fDrag = kMove;
+				if (fArea->fEditor != NULL)
+					fArea->fEditor->Commit();
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+			}
 		}
+		fArea->fEngine->Unlock();
+		if (notifyMuteSolo)
+			Window()->PostMessage(kMsgMuteSoloChanged);
+		if (notifyTracks)
+			NotifySelection();
 		Invalidate();
 	}
 
+	virtual void MouseMoved(BPoint where, uint32 transit, const BMessage* drag)
+	{
+		if (fDrag == kNoDrag || !fArea->fEngine->Lock())
+			return;
+		pmx::Project& project = fArea->fEngine->Project();
+		if (fDragClip.first < project.tracks.size()
+			&& fDragClip.second < project.tracks[fDragClip.first].clips.size()) {
+			pmx::Track& track = project.tracks[fDragClip.first];
+			pmx::Clip& clip = track.clips[fDragClip.second];
+			const float dt = float(TimeAt(where.x) - fDragStart);
+			const float grid = Grid();
+			clip = fOriginal;
+			switch (fDrag) {
+				case kMove:
+					pmx::SetClipPos(clip, fOriginal.start + dt, grid);
+					break;
+				case kTrimEnd:
+					pmx::SetClipLength(clip, pmx::ClipLength(fOriginal) + dt, grid);
+					break;
+				case kTrimStart:
+				{
+					// the sound stays in place: skip, position and length move
+					pmx::SetClipSkip(clip, fOriginal.loopIn + dt);
+					float moved = clip.loopIn - fOriginal.loopIn;
+					float pos = fOriginal.start + moved;
+					if (pos < 0) {
+						moved -= pos;
+						pos = 0;
+					}
+					float length = pmx::ClipLength(fOriginal) - moved;
+					clip.start = pos;
+					clip.end = pos + std::max(0.0f, length);
+					pmx::SetClipLength(clip, std::max(0.0f, length), 0);
+					break;
+				}
+				case kLoopHandle:
+					pmx::SetClipLoop(clip, float(TimeAt(where.x)) - clip.start, grid);
+					break;
+				default:
+					break;
+			}
+			pmx::RedoTime(track);
+		}
+		fArea->fEngine->Unlock();
+		Invalidate();
+	}
+
+	virtual void MouseUp(BPoint where)
+	{
+		if (fDrag != kNoDrag)
+			Window()->PostMessage(kMsgClipsChanged);
+		fDrag = kNoDrag;
+	}
+
+	pmx::ClipSelection fClips;
+	size_t fPasteTrack = 0;
+	size_t fPasteAfter = 0;
+
+private:
+	enum { kNoDrag, kMove, kTrimStart, kTrimEnd, kLoopHandle } fDrag = kNoDrag;
+	pmx::ClipRef fDragClip;
+	pmx::ClipRef fLastClip = pmx::ClipRef(size_t(-1), 0);
+	bigtime_t fLastClick = 0;
+	pmx::Clip fOriginal;
+	double fDragStart = 0;
+
+public:
 	std::set<int> fSelected;
 
 private:
@@ -594,6 +762,7 @@ TrackArea::TrackArea(BRect frame, AudioEngine* engine)
 	:
 	BView(frame, "tracks", B_FOLLOW_ALL_SIDES, B_WILL_DRAW),
 	fEngine(engine),
+	fEditor(NULL),
 	fRotation(3.1415925f),
 	fSecondsPerPixel(1.0f / 14),
 	fViewStart(0)
@@ -720,7 +889,7 @@ TrackArea::MessageReceived(BMessage* message)
 }
 
 void
-TrackArea::ProjectChanged()
+TrackArea::ProjectChanged(bool keepSelection)
 {
 	size_t count = 0;
 	float length = 0;
@@ -738,7 +907,20 @@ TrackArea::ProjectChanged()
 	BMenuItem* item = fBeats->Menu()->ItemAt(std::max(0, std::min(4, beats - 3)));
 	if (item != NULL)
 		item->SetMarked(true);
-	fLanes->fSelected.clear();
+	if (!keepSelection) {
+		fLanes->fSelected.clear();
+		fLanes->fClips.clear();
+	} else if (fEngine->Lock()) {
+		const pmx::Project& project = fEngine->Project();
+		for (auto it = fLanes->fClips.begin(); it != fLanes->fClips.end();) {
+			if (it->first >= project.tracks.size()
+				|| it->second >= project.tracks[it->first].clips.size())
+				it = fLanes->fClips.erase(it);
+			else
+				++it;
+		}
+		fEngine->Unlock();
+	}
 	// TrackView::LoadMaster: 30 + (height + 8) per track
 	fVertical->SetRange(0, std::max(0.0f, kLaneTop + count * (kLaneHeight + 8)
 		- fLanes->Bounds().Height()));
@@ -758,6 +940,50 @@ bool
 TrackArea::FastDisplay() const
 {
 	return TrackLanes::sFastDisplay;
+}
+
+void
+TrackArea::GetEditTargets(std::set<std::pair<size_t, size_t> >& clips, size_t& pasteTrack,
+	size_t& pasteAfter) const
+{
+	clips = fLanes->fClips;
+	pasteTrack = fLanes->fPasteTrack;
+	pasteAfter = fLanes->fPasteAfter;
+}
+
+void
+TrackArea::ClearClipSelection()
+{
+	fLanes->fClips.clear();
+	fLanes->Invalidate();
+}
+
+std::set<int>
+TrackArea::SelectedTracks() const
+{
+	return fLanes->fSelected;
+}
+
+// TCtrlView::SetBPM
+void
+TrackArea::SetTicks(float ticks)
+{
+	BString text;
+	text.SetToFormat("%.3f", ticks);
+	if (fEngine->Lock()) {
+		fEngine->Project().ticks = ticks;
+		fEngine->Project().ticksText = text.String();
+		fEngine->Unlock();
+	}
+	fTicks->SetText(text.String());
+	fRuler->Invalidate();
+}
+
+void
+TrackArea::SetBeatMarks(bool show)
+{
+	fBeatMarks = show;
+	fRuler->Invalidate();
 }
 
 void

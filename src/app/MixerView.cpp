@@ -42,6 +42,17 @@ MixerView::~MixerView()
 	delete fBitmap;
 }
 
+bool
+MixerView::FloorUnderPointer(float& x, float& y)
+{
+	BPoint where;
+	uint32 buttons;
+	GetMouse(&where, &buttons, false);
+	if (!Bounds().Contains(where))
+		return false;
+	return fScene.FloorPoint(where.x - FrameOffset(), where.y, x, y);
+}
+
 int
 MixerView::FrameOffset() const
 {
@@ -59,8 +70,12 @@ MixerView::SyncTracks()
 {
 	pmx::Project& project = fEngine->Project();
 	fScene.RemoveAllTracks();
-	for (const pmx::Track& track : project.tracks)
-		fScene.AddTrack(track.name, track.x, track.y);
+	for (const pmx::Track& track : project.tracks) {
+		if (track.addedByHand)
+			fScene.AddNewTrack(track.name, track.x, track.y);
+		else
+			fScene.AddTrack(track.name, track.x, track.y);
+	}
 	for (int i = 0; i < fScene.CountTracks(); i++)
 		fScene.SetMuted(i, fEngine->Mixer().IsMuted(size_t(i)));
 }

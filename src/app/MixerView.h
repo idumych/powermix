@@ -24,6 +24,8 @@ public:
 	// Rebuilds the scene from the project (after loading, adding or
 	// deleting tracks). Call with the engine locked.
 	void SyncTracks();
+	// invert_map: the floor point under the pointer, if it's over the view
+	bool FloorUnderPointer(float& x, float& y);
 	// One frame of TSoundView::Animate; fast = the mixer is showing
 	void Animate(bool fast);
 

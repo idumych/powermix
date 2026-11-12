@@ -10,6 +10,7 @@ class BFilePanel;
 class BMenuItem;
 class BMessageRunner;
 class MixerView;
+namespace pmx { class Editor; }
 class StatusView;
 class TrackArea;
 
@@ -34,6 +35,7 @@ private:
 	status_t SaveProject(const char* folder, const char* name);
 	status_t SaveMix(const char* path);
 	void ShowError(const char* text);
+	void ProjectStructureChanged(bool keepSelection = false);
 
 	AudioEngine* fEngine;
 	BView* fOuter;		// 0x180: the strip and the inner view
@@ -50,6 +52,12 @@ private:
 	BMenuItem* fSaveWaveItem;
 	BMenuItem* fPauseItem;
 	BMenuItem* fFastItem;
+	BMenuItem* fUndoItem;
+	BMenuItem* fClearItem;
+	BMenuItem* fCutItem;
+	BMenuItem* fCopyItem;
+	BMenuItem* fPasteItem;
+	pmx::Editor* fEditor;
 	bool fMixerShown;		// 0x190
 	bool fControlsShown;	// 0x194
 	BString fProjectFolder;

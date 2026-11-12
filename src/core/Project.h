@@ -49,6 +49,7 @@ struct Clip {
 struct Track {
 	std::string name;		// also the track file's name
 	float x = 0, y = 0;		// position on the mixer's floor, -256..256
+	bool addedByHand = false;	// runtime only: its 3D level bar is blue
 	std::vector<Clip> clips;
 
 	// TrackViewer::fill_buffer: count frames starting at frame `at` of the

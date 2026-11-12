@@ -10,6 +10,7 @@
 #include <set>
 
 class AudioEngine;
+namespace pmx { class Editor; }
 class BMenuField;
 class BScrollBar;
 class BTextControl;
@@ -27,7 +28,7 @@ public:
 	virtual void MessageReceived(BMessage* message);
 
 	// The project changed (loaded, tracks added or removed)
-	void ProjectChanged();
+	void ProjectChanged(bool keepSelection = false);
 	void SetTime(double time);
 	// From the 3D view: "track" int32s of the selected tracks
 	void SetSelection(const BMessage& tracks);
@@ -40,6 +41,16 @@ public:
 	void ScrollTime(float seconds);
 
 	AudioEngine* Engine() const { return fEngine; }
+	void SetEditor(pmx::Editor* editor) { fEditor = editor; }
+	// The Edit menu's targets: selected clips, the paste position
+	void GetEditTargets(std::set<std::pair<size_t, size_t> >& clips, size_t& pasteTrack,
+		size_t& pasteAfter) const;
+	void ClearClipSelection();
+	// Display ▸ Show/hide beat marks (TimeView::Toggle)
+	void SetBeatMarks(bool show);
+	void SetTicks(float ticks);
+	bool BeatMarks() const { return fBeatMarks; }
+	std::set<int> SelectedTracks() const;
 
 private:
 	friend class TimeRuler;
@@ -48,6 +59,7 @@ private:
 	void DrawTriangle();
 
 	AudioEngine* fEngine;
+	pmx::Editor* fEditor;
 	BTextControl* fTicks;
 	BMenuField* fBeats;
 	TimeRuler* fRuler;
@@ -56,6 +68,7 @@ private:
 	BScrollBar* fHorizontal;
 	BScrollBar* fVertical;
 	float fRotation;
+	bool fBeatMarks = true;
 	float fSecondsPerPixel;
 	float fViewStart;		// seconds at the lanes' left edge
 };

@@ -17,6 +17,8 @@
 #include <cstdio>
 
 #include "AudioEngine.h"
+#include "BeatWindow.h"
+#include "Edit.h"
 #include "MixerView.h"
 #include "PowerMix.h"
 #include "StatusView.h"
@@ -40,6 +42,7 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 	fMixerShown(false),
 	fControlsShown(false)
 {
+	fEditor = new pmx::Editor(&engine->Project());
 	BRect menuFrame = Bounds();
 	BuildMenus(menuFrame);
 	const float menuHeight = menuFrame.Height();
@@ -61,6 +64,7 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 		engine);
 	fInner->AddChild(fTrackArea);
 	fMixer->SetSelectionTarget(this);
+	fTrackArea->SetEditor(fEditor);
 
 	fStatus = new StatusView(BRect(0, 0, 63, 32000), this);
 	fOuter->AddChild(fStatus);
@@ -76,6 +80,7 @@ MainWindow::~MainWindow()
 	delete fOpenPanel;
 	delete fSavePanel;
 	delete fWavePanel;
+	delete fEditor;
 }
 
 void
@@ -101,12 +106,13 @@ MainWindow::BuildMenus(BRect& menuFrame)
 	bar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Edit"));
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Undo"), new BMessage(kMsgUndo), 'Z'));
+	menu->AddItem(fUndoItem = new BMenuItem(B_TRANSLATE("Undo"), new BMessage(kMsgUndo), 'Z'));
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Clear"), new BMessage(kMsgClear)));
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Cut"), new BMessage(kMsgCut), 'X'));
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Copy"), new BMessage(kMsgCopy), 'C'));
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Paste"), new BMessage(kMsgPaste), 'V'));
+	menu->AddItem(fClearItem = new BMenuItem(B_TRANSLATE("Clear"), new BMessage(kMsgClear)));
+	menu->AddItem(fCutItem = new BMenuItem(B_TRANSLATE("Cut"), new BMessage(kMsgCut), 'X'));
+	menu->AddItem(fCopyItem = new BMenuItem(B_TRANSLATE("Copy"), new BMessage(kMsgCopy), 'C'));
+	menu->AddItem(fPasteItem = new BMenuItem(B_TRANSLATE("Paste"), new BMessage(kMsgPaste),
+		'V'));
 	bar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Display"));
@@ -159,6 +165,14 @@ MainWindow::MenusBeginning()
 	fSaveAsItem->SetEnabled(haveProject);
 	fSaveWaveItem->SetEnabled(haveProject);
 	fPauseItem->SetMarked(fEngine->IsPaused());
+	fUndoItem->SetEnabled(fEditor->CanUndo());
+	pmx::ClipSelection clips;
+	size_t a, b;
+	fTrackArea->GetEditTargets(clips, a, b);
+	fCutItem->SetEnabled(!clips.empty());
+	fCopyItem->SetEnabled(!clips.empty());
+	fClearItem->SetEnabled(!clips.empty());
+	fPasteItem->SetEnabled(fEditor->HasClipboard() && haveProject);
 	fFastItem->SetMarked(fTrackArea->FastDisplay());
 }
 
@@ -342,6 +356,19 @@ MainWindow::SaveMix(const char* path)
 	return B_OK;
 }
 
+// After tracks were added, deleted or undone: the mixer and both views
+// start again from the project
+void
+MainWindow::ProjectStructureChanged(bool keepSelection)
+{
+	if (fEngine->Lock()) {
+		fEngine->Mixer().Reset();
+		fMixer->SyncTracks();
+		fEngine->Unlock();
+	}
+	fTrackArea->ProjectChanged(keepSelection);
+}
+
 void
 MainWindow::ShowError(const char* text)
 {
@@ -456,6 +483,110 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgFastDisplay:
 			fTrackArea->SetFastDisplay(!fTrackArea->FastDisplay());
+			break;
+		case kMsgUndo:
+			if (fEngine->Lock()) {
+				fEditor->Undo();
+				fEngine->Unlock();
+			}
+			ProjectStructureChanged(true);
+			break;
+		case kMsgClear:
+		case kMsgCut:
+		case kMsgCopy:
+		case kMsgPaste:
+		{
+			pmx::ClipSelection clips;
+			size_t pasteTrack, pasteAfter;
+			fTrackArea->GetEditTargets(clips, pasteTrack, pasteAfter);
+			if (fEngine->Lock()) {
+				if (message->what == kMsgCopy)
+					fEditor->Copy(clips);
+				else if (message->what == kMsgCut)
+					fEditor->Cut(clips);
+				else if (message->what == kMsgClear)
+					fEditor->Clear(clips);
+				else
+					fEditor->Paste(pasteTrack, pasteAfter);
+				fEngine->Unlock();
+			}
+			if (message->what != kMsgCopy)
+				fTrackArea->ProjectChanged(message->what == kMsgPaste);
+			break;
+		}
+		case kMsgNewTrack:
+		{
+			// do_add_channel(char*, TrackViewer*): where the pointer is on
+			// the floor, if it's over the 3D view
+			float x = 0, y = 100;
+			if (fMixerShown)
+				fMixer->FloorUnderPointer(x, y);
+			if (fEngine->Lock()) {
+				size_t index = fEditor->NewTrack(B_TRANSLATE("untitled"));
+				pmx::Track& track = fEngine->Project().tracks[index];
+				track.x = x;
+				track.y = y;
+				track.addedByHand = true;
+				fEngine->Unlock();
+			}
+			ProjectStructureChanged();
+			break;
+		}
+		case kMsgDeleteTracks:
+		{
+			std::set<size_t> tracks;
+			for (int t : fTrackArea->SelectedTracks())
+				tracks.insert(size_t(t));
+			for (int i = 0; i < fMixer->Scene().CountTracks(); i++) {
+				if (fMixer->Scene().IsSelected(i))
+					tracks.insert(size_t(i));
+			}
+			if (tracks.empty())
+				break;
+			if (fEngine->Lock()) {
+				fEditor->DeleteTracks(tracks);
+				fEngine->Unlock();
+			}
+			ProjectStructureChanged();
+			break;
+		}
+		case kMsgTicksFromSelection:
+		case kMsgTicksFromSample:
+		{
+			float length = 0;
+			if (fEngine->Lock()) {
+				const pmx::Project& project = fEngine->Project();
+				if (message->what == kMsgTicksFromSelection)
+					length = project.selectionEnd - project.selectionStart;
+				else {
+					// TrackView::DoBPM1: the (last) selected clip's length
+					pmx::ClipSelection clips;
+					size_t a, b;
+					fTrackArea->GetEditTargets(clips, a, b);
+					for (const pmx::ClipRef& ref : clips) {
+						if (ref.first < project.tracks.size()
+							&& ref.second < project.tracks[ref.first].clips.size())
+							length = pmx::ClipLength(project.tracks[ref.first].clips[ref.second]);
+					}
+				}
+				fEngine->Unlock();
+			}
+			if (length > 0)
+				(new BeatWindow(this, length, BMessenger(this)))->Show();
+			break;
+		}
+		case kMsgSetTicks:
+		{
+			float ticks;
+			if (message->FindFloat("ticks", &ticks) == B_OK)
+				fTrackArea->SetTicks(ticks);
+			break;
+		}
+		case kMsgShowHideBeatMarks:
+			fTrackArea->SetBeatMarks(!fTrackArea->BeatMarks());
+			break;
+		case kMsgClipsChanged:
+			fTrackArea->RedrawLanes();
 			break;
 		case kMsgPause:
 			fEngine->SetPaused(!fEngine->IsPaused());

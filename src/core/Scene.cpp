@@ -128,6 +128,45 @@ Scene::FrameOffset(float windowWidth)
 void
 Scene::AddTrack(const std::string& name, float x, float y)
 {
+	AddTrackWithBar(name, x, y, kHueGreen * 4);
+}
+
+void
+Scene::AddNewTrack(const std::string& name, float x, float y)
+{
+	AddTrackWithBar(name, x, y, kHueBlue * 4);
+}
+
+// The floor point projecting nearest to a frame point, by refining a grid
+bool
+Scene::FloorPoint(float frameX, float frameY, float& x, float& y) const
+{
+	float bestX = 0, bestZ = 0, best = 1e30f, span = 300;
+	for (int pass = 0; pass < 6; pass++, span /= 5) {
+		float cx = bestX, cz = bestZ;
+		for (int i = -10; i <= 10; i++) {
+			for (int k = -10; k <= 10; k++) {
+				float px = cx + span * i / 10, pz = cz + span * k / 10;
+				float sx, sy, d;
+				Project(px, 0, pz, sx, sy, d);
+				float dx = sx + 512 - frameX, dy = sy + fCenterY - frameY;
+				float e = dx * dx + dy * dy;
+				if (e < best) {
+					best = e;
+					bestX = px;
+					bestZ = pz;
+				}
+			}
+		}
+	}
+	x = std::max(-250.0f, std::min(250.0f, bestX));
+	y = std::max(-250.0f, std::min(250.0f, bestZ));
+	return best < 400;
+}
+
+void
+Scene::AddTrackWithBar(const std::string& name, float x, float y, int barMapper)
+{
 	const int n = int(fTracks.size());
 	Track track;
 	track.name = name;
@@ -165,7 +204,7 @@ Scene::AddTrack(const std::string& name, float x, float y)
 	int l1 = vertex(5, -4, 0, n, 0);
 	int l2 = vertex(5, -30, 0, n, kTagTtop);
 	int l3 = vertex(-5, -30, 0, n, kTagTtop);
-	poly(l0, l1, l2, l3, kHueGreen * 4);
+	poly(l0, l1, l2, l3, barMapper);
 
 	MoveTrack(n, x, 0, y);
 }

@@ -16,7 +16,10 @@ Every check runs the app's script option and saves its stdout as
 
 ## Fresh state
 
-PowerMix writes no settings; nothing to delete.
+PowerMix remembers the look and its window sizes in `PowerMix_settings`:
+delete `~/config/settings/PowerMix_settings` (Haiku) or
+`~/.config/cosmoe/PowerMix_settings` (Linux) before testing, so it starts
+in the classic look.
 
 ## Feature checks
 
@@ -33,3 +36,10 @@ eight seconds, mixed, not silent.
 ### import-sound
 Steps: `PowerMix --do 'open $FIX/demo/demo.3dmix; drop $FIX/click.wav 1 9; dump; quit'`.
 PASS when: track 1 (hats) has `clips=2 ` (EVIDENCE_3).
+
+### modern-look
+Steps: `PowerMix --do 'open $FIX/demo/demo.3dmix; look modern split; select 2; dump; quit'`.
+PASS when: the output has `look modern` and `tracks=6 ` (EVIDENCE_4). Also
+screenshot the window while it is in the modern look (before `quit`): the
+toolbar, the track list with bass selected, the stage with six columns,
+the lanes and the inspector showing bass.

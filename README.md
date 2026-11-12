@@ -87,8 +87,9 @@ Not (yet) like the original:
 
 | Platform | Package | Tested |
 |---|---|---|
-| Haiku R1/beta6, Renku (x86_64) | `.hpkg` (not yet released) | built and run in a VM: 3D view, tracks, editing, import, editor, About, script checks; no audio device in the VM, so playback was silent |
-| Linux (x86_64) | AppImage through [Hokku](https://github.com/idumych/hokku) (not yet released) | built locally and run under Xvfb (X11): tracks, 3D view, editor, script checks |
+| Haiku R1/beta6, Renku (x86_64) | `.hpkg` | installed and run in a Haiku R1/beta6 VM: the release's script checks (open, export, import, modern look) and screenshots; no audio device in the VM, so playback was silent |
+| Linux (x86_64, aarch64) | AppImage through [Hokku](https://github.com/idumych/hokku) | x86_64: run under Xvfb (X11) for the release's script checks; both started in CI under X11 and headless Wayland |
+| Haiku arm64 | not released yet | cross-built only; not yet run on Haiku arm64 |
 
 ## Building
 

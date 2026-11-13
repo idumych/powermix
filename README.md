@@ -27,7 +27,8 @@ including the sample mixes that came with BeOS 5.
   between the ears from the place on the floor. Against the original's
   own "Save mix as WAVE", half of the mixing blocks match sample for
   sample and the rest differ by a frame at some block boundaries.
-- **Tracks** hold clips that loop part of a sound. Drag a clip to move it,
+- **Tracks** hold clips that loop part of a sound. Drag a clip to move it
+  (Shift-click to select several: they move together),
   its ends to trim it, the red handle below it to set its loop; Ctrl snaps
   to the beat, Shift-resizing resamples the sound to fit and Option-resizing
   stretches it. The small squares along a clip's top are its fades: drag

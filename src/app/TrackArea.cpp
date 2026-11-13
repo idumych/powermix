@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <cmath>
 #include <cstdio>
 
@@ -787,9 +788,14 @@ public:
 				}
 				fLastClip = ref;
 				fLastClick = now;
-				if (!shift)
+				// pressing a clip that's already selected keeps the selection,
+				// so dragging moves all of it; a click that doesn't drag narrows
+				// it to this clip when the button comes up
+				const bool wasSelected = fClips.count(ref) > 0;
+				if (!shift && !wasSelected)
 					fClips.clear();
 				fClips.insert(ref);
+				fNarrowOnRelease = !shift && wasSelected && fClips.size() > 1;
 				const pmx::Clip& clip = track.clips[size_t(hit)];
 				fOriginal = Timing(clip);
 				fDragClip = ref;
@@ -815,6 +821,15 @@ public:
 					fDrag = kTrimEnd;
 				else
 					fDrag = kMove;
+				// the selected clips that move with this one
+				fGroup.clear();
+				if (fDrag == kMove) {
+					for (const pmx::ClipRef& other : fClips) {
+						if (other.first < project.tracks.size()
+							&& other.second < project.tracks[other.first].clips.size())
+							fGroup[other] = Timing(project.tracks[other.first].clips[other.second]);
+					}
+				}
 				// the undo step is taken when the clip first changes: a click
 				// that only selects doesn't copy the whole project
 				fCommitted = false;
@@ -854,8 +869,30 @@ public:
 			clip.fadeOut = fOriginal.fadeOut;
 			switch (fDrag) {
 				case kMove:
-					pmx::SetClipPos(clip, fOriginal.start + dt, grid);
+				{
+					// the grabbed clip leads (Ctrl snaps it to the beat), the
+					// other selected clips keep their distance; none before 0
+					float by = std::max(0.0f, pmx::ToGrid(fOriginal.start + dt, grid))
+						- fOriginal.start;
+					for (const auto& moving : fGroup)
+						by = std::max(by, -moving.second.start);
+					std::set<size_t> tracks;
+					for (const auto& moving : fGroup) {
+						pmx::Clip& c = project.tracks[moving.first.first].clips[moving.first.second];
+						const pmx::Clip& from = moving.second;
+						c.start = from.start;
+						c.end = from.end;
+						c.loopIn = from.loopIn;
+						c.loopOut = from.loopOut;
+						c.fadeIn = from.fadeIn;
+						c.fadeOut = from.fadeOut;
+						pmx::SetClipPos(c, from.start + by, 0);
+						tracks.insert(moving.first.first);
+					}
+					for (size_t t : tracks)
+						pmx::RedoTime(project.tracks[t]);
 					break;
+				}
 				case kTrimEnd:
 					pmx::SetClipLength(clip, pmx::ClipLength(fOriginal) + dt, grid);
 					break;
@@ -940,6 +977,13 @@ public:
 			}
 			fArea->fEngine->Unlock();
 		}
+		if (fNarrowOnRelease && !fCommitted) {
+			// a click on one of several selected clips, without a drag
+			fClips.clear();
+			fClips.insert(fDragClip);
+			Invalidate();
+		}
+		fNarrowOnRelease = false;
 		if (fDrag != kNoDrag)
 			Window()->PostMessage(kMsgClipsChanged);
 		fDrag = kNoDrag;
@@ -956,7 +1000,9 @@ private:
 	pmx::ClipRef fLastClip = pmx::ClipRef(size_t(-1), 0);
 	bigtime_t fLastClick = 0;
 	pmx::Clip fOriginal;		// the dragged clip's timing when the drag began (no sound)
+	std::map<pmx::ClipRef, pmx::Clip> fGroup;	// moving: every selected clip's timing
 	bool fCommitted = false;	// this drag's undo step is taken
+	bool fNarrowOnRelease = false;
 
 	static pmx::Clip Timing(const pmx::Clip& clip)
 	{

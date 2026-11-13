@@ -3,6 +3,7 @@
 
 #ifndef POWERMIX_NO_MEDIA_KIT
 #include <MediaRecorder.h>
+#include <MediaRoster.h>
 #endif
 
 #include <algorithm>
@@ -14,6 +15,9 @@
 Recorder::Recorder()
 	:
 	fRecorder(NULL),
+#if !defined(POWERMIX_NO_MEDIA_KIT) && !defined(APP_COSMOE)
+	fHoldingInput(false),
+#endif
 	fChannels(1),
 	fRate(44100),
 	fRecording(false),
@@ -59,33 +63,79 @@ Recorder::Start()
 	if (status != B_OK)
 		return status;
 	fRecorder->SetHooks(Record, NULL, this);
-	// ask for what a clip holds; whatever the input gives is converted
-	media_format format;
-	format.type = B_MEDIA_RAW_AUDIO;
-	format.u.raw_audio = media_raw_audio_format::wildcard;
-	fRecorder->SetAcceptedFormat(format);
-	format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
-	format.u.raw_audio.channel_count = 1;
-	format.u.raw_audio.frame_rate = 44100;
-	status = fRecorder->Connect(format);
-	if (status != B_OK) {
-		// the input couldn't give that: take what it gives
-		media_format any;
-		any.type = B_MEDIA_RAW_AUDIO;
-		any.u.raw_audio = media_raw_audio_format::wildcard;
-		status = fRecorder->Connect(any);
-	}
+	status = Connect();
 	if (status != B_OK)
 		return status;
 	fRecording = true;
 	status = fRecorder->Start();
 	if (status != B_OK) {
 		fRecording = false;
-		fRecorder->Disconnect();
+		Disconnect();
 	}
 	return status;
 #endif
 }
+
+#ifndef POWERMIX_NO_MEDIA_KIT
+// BMediaRecorder::Connect(format) on Haiku hooks up to the system mixer's
+// output (what's playing), which the sound card already has: connect to a
+// free output of the default audio input instead, as SoundRecorder does,
+// in the format it gives. Hokku's Connect(format) opens the capture device.
+status_t
+Recorder::Connect()
+{
+	media_format format;
+	format.type = B_MEDIA_RAW_AUDIO;
+	format.u.raw_audio = media_raw_audio_format::wildcard;
+	fRecorder->SetAcceptedFormat(format);
+#ifdef APP_COSMOE
+	format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
+	format.u.raw_audio.channel_count = 1;
+	format.u.raw_audio.frame_rate = 44100;
+	status_t status = fRecorder->Connect(format);
+	if (status != B_OK) {
+		// the input couldn't give that: take what it gives
+		format.u.raw_audio = media_raw_audio_format::wildcard;
+		status = fRecorder->Connect(format);
+	}
+	return status;
+#else
+	BMediaRoster* roster = BMediaRoster::Roster();
+	if (roster == NULL)
+		return B_MEDIA_SYSTEM_FAILURE;
+	status_t status = roster->GetAudioInput(&fInput);
+	if (status != B_OK)
+		return status;
+	fHoldingInput = true;
+	media_output output;
+	int32 count = 0;
+	status = roster->GetFreeOutputsFor(fInput, &output, 1, &count,
+		B_MEDIA_RAW_AUDIO);
+	if (status == B_OK && count < 1)
+		status = B_BUSY;				// another program is recording
+	if (status == B_OK) {
+		format.u.raw_audio = output.format.u.raw_audio;
+		status = fRecorder->Connect(fInput, &output, &format);
+	}
+	if (status != B_OK)
+		Disconnect();
+	return status;
+#endif
+}
+
+void
+Recorder::Disconnect()
+{
+	if (fRecorder != NULL && fRecorder->IsConnected())
+		fRecorder->Disconnect();
+#ifndef APP_COSMOE
+	if (fHoldingInput) {
+		BMediaRoster::Roster()->ReleaseNode(fInput);
+		fHoldingInput = false;
+	}
+#endif
+}
+#endif
 
 std::vector<int16>
 Recorder::Stop()
@@ -95,7 +145,7 @@ Recorder::Stop()
 	if (!fRecording || fRecorder == NULL)
 		return samples;
 	fRecorder->Stop();
-	fRecorder->Disconnect();
+	Disconnect();
 	fRecording = false;
 	fLevel = 0;
 	std::lock_guard<std::mutex> guard(fLock);

@@ -5,6 +5,9 @@
 #define POWERMIX_RECORDER_H
 
 #include <SupportDefs.h>
+#ifndef POWERMIX_NO_MEDIA_KIT
+#include <MediaNode.h>
+#endif
 
 #include <atomic>
 #include <mutex>
@@ -33,8 +36,14 @@ public:
 private:
 	static void Record(void* cookie, bigtime_t timestamp, void* data, size_t size,
 		const media_format& format);
+	status_t Connect();
+	void Disconnect();
 
 	BMediaRecorder* fRecorder;
+#if !defined(POWERMIX_NO_MEDIA_KIT) && !defined(APP_COSMOE)
+	media_node fInput;				// the default audio input, while held
+	bool fHoldingInput;
+#endif
 	std::mutex fLock;
 	std::vector<float> fFrames;		// interleaved, as recorded
 	int fChannels;

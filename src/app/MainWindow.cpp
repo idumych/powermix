@@ -383,6 +383,11 @@ MainWindow::StartRecording()
 		fEngine->Unlock();
 	}
 	status_t status = fRecorder.Start();
+	if (status == B_BUSY) {
+		ShowError(B_TRANSLATE("PowerMix couldn't record: another program is using the "
+			"audio input."));
+		return;
+	}
 	if (status != B_OK) {
 		BString text;
 		text.SetToFormat(B_TRANSLATE("PowerMix couldn't record: no audio input could be "

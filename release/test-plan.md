@@ -70,5 +70,8 @@ the project and its tracks were found beside it.
 Linux: with `COSMOE_AUDIO_CAPTURE_FILE=$FIX/click.wav`,
 `PowerMix --do 'open $FIX/demo/demo.3dmix; countin off; arm 1; record 2; dump; quit'`
 must print `record track=1 name=hats clips=2` with a non-zero peak.
-Haiku: the test VM has no audio input; `record 1` must print
-`record failed` (PowerMix shows an alert) and leave the project as it was.
+Haiku: the test VM has an HDA sound card whose input records silence (the
+VirtualBox null audio driver); `record 2` must print `record track=1
+name=hats clips=2` with a take of at least 1.8 s (peak 0 is expected), and
+the output must hold no `BMediaRoster::Connect: aborted` or `QueryPort`
+lines (0.2.2 connected to the system mixer instead of the input).

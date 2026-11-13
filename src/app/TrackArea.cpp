@@ -791,7 +791,7 @@ public:
 					fClips.clear();
 				fClips.insert(ref);
 				const pmx::Clip& clip = track.clips[size_t(hit)];
-				fOriginal = clip;
+				fOriginal = Timing(clip);
 				fDragClip = ref;
 				fDragStart = t;
 				float left = (clip.start - fArea->fViewStart) / fArea->fSecondsPerPixel;
@@ -815,8 +815,9 @@ public:
 					fDrag = kTrimEnd;
 				else
 					fDrag = kMove;
-				if (fArea->fEditor != NULL)
-					fArea->fEditor->Commit();
+				// the undo step is taken when the clip first changes: a click
+				// that only selects doesn't copy the whole project
+				fCommitted = false;
 				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 			}
 		}
@@ -839,7 +840,18 @@ public:
 			pmx::Clip& clip = track.clips[fDragClip.second];
 			const float dt = float(TimeAt(where.x) - fDragStart);
 			const float grid = Grid();
-			clip = fOriginal;
+			if (!fCommitted && dt != 0) {
+				Commit();
+				fCommitted = true;
+			}
+			// back to where the drag began (its timing only: copying a long
+			// clip's sound on every move made dragging crawl)
+			clip.start = fOriginal.start;
+			clip.end = fOriginal.end;
+			clip.loopIn = fOriginal.loopIn;
+			clip.loopOut = fOriginal.loopOut;
+			clip.fadeIn = fOriginal.fadeIn;
+			clip.fadeOut = fOriginal.fadeOut;
 			switch (fDrag) {
 				case kMove:
 					pmx::SetClipPos(clip, fOriginal.start + dt, grid);
@@ -912,10 +924,15 @@ public:
 			if (fDragClip.first < project.tracks.size()
 				&& fDragClip.second < project.tracks[fDragClip.first].clips.size()) {
 				pmx::Clip& clip = project.tracks[fDragClip.first].clips[fDragClip.second];
-				double factor = pmx::ClipLength(clip) / std::max(0.01f, pmx::SoundLength(fOriginal));
+				if (!fCommitted) {
+					Commit();
+					fCommitted = true;
+				}
+				// the sound hasn't changed during the drag, only the timing
+				double factor = pmx::ClipLength(clip) / std::max(0.01f, pmx::SoundLength(clip));
 				clip.samples = (keys & B_SHIFT_KEY) != 0
-					? pmx::Resample(fOriginal.samples, factor)
-					: pmx::TimeStretch(fOriginal.samples, factor);
+					? pmx::Resample(clip.samples, factor)
+					: pmx::TimeStretch(clip.samples, factor);
 				clip.loopIn = 0;
 				clip.loopOut = pmx::SoundLength(clip);
 				pmx::SetClipLength(clip, pmx::SoundLength(clip), 0);
@@ -938,7 +955,27 @@ private:
 	pmx::ClipRef fDragClip;
 	pmx::ClipRef fLastClip = pmx::ClipRef(size_t(-1), 0);
 	bigtime_t fLastClick = 0;
-	pmx::Clip fOriginal;
+	pmx::Clip fOriginal;		// the dragged clip's timing when the drag began (no sound)
+	bool fCommitted = false;	// this drag's undo step is taken
+
+	static pmx::Clip Timing(const pmx::Clip& clip)
+	{
+		pmx::Clip timing;
+		timing.source = clip.source;
+		timing.start = clip.start;
+		timing.end = clip.end;
+		timing.loopIn = clip.loopIn;
+		timing.loopOut = clip.loopOut;
+		timing.fadeIn = clip.fadeIn;
+		timing.fadeOut = clip.fadeOut;
+		return timing;
+	}
+
+	void Commit()
+	{
+		if (fArea->fEditor != NULL)
+			fArea->fEditor->Commit();
+	}
 	double fDragStart = 0;
 
 public:

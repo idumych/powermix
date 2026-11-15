@@ -75,6 +75,7 @@ MainWindow::MainWindow(BRect frame, AudioEngine* engine)
 	fClassicViewStart(0)
 {
 	fSettings.Load();
+	fRecorder.SetSource(fSettings.recordNode.String(), fSettings.recordOutput.String());
 	fViewMode = fSettings.viewMode;
 	fEditor = new pmx::Editor(&engine->Project());
 	BRect menuFrame = Bounds();
@@ -190,6 +191,8 @@ MainWindow::BuildMenus(BRect& menuFrame)
 		new BMessage(kMsgClick)));
 	menu->AddItem(fCountInItem = new BMenuItem(B_TRANSLATE("Count-in before recording"),
 		new BMessage(kMsgCountIn)));
+	// Filled when the menu opens: programs come and go
+	menu->AddItem(fRecordFromMenu = new BMenu(B_TRANSLATE("Record from")));
 	menu->AddSeparatorItem();
 	menu->AddItem(fMovesItem = new BMenuItem(B_TRANSLATE("Record moves"),
 		new BMessage(kMsgRecordMoves)));
@@ -258,6 +261,7 @@ MainWindow::MenusBeginning()
 	}
 	fClearMovesItem->SetEnabled(selectedPath);
 	fCountInItem->SetMarked(fSettings.countIn);
+	UpdateRecordFromMenu();
 	fArmItem->SetMarked(armedSelected);
 	fControlsItem->SetEnabled(!fModern);
 }
@@ -365,6 +369,62 @@ MainWindow::SetArmed(int track)
 	SelectionChanged();
 }
 
+BString
+MainWindow::RecordSourceName() const
+{
+	if (fSettings.recordNode.Length() == 0)
+		return BString(B_TRANSLATE("Default input"));
+	BString name(fSettings.recordNode);
+	if (fSettings.recordOutput.Length() > 0)
+		name << ": " << fSettings.recordOutput;
+	return name;
+}
+
+// Tracks > Record from: the default input, then the running programs'
+// free outputs (Hydrogen's Send, …); the chosen one stays listed while
+// it isn't running or is connected elsewhere, so the choice is visible.
+void
+MainWindow::UpdateRecordFromMenu()
+{
+	while (BMenuItem* item = fRecordFromMenu->RemoveItem(int32(0)))
+		delete item;
+	BMessage* message = new BMessage(kMsgRecordFrom);
+	message->AddString("node", "");
+	message->AddString("output", "");
+	BMenuItem* item = new BMenuItem(B_TRANSLATE("Default input"), message);
+	item->SetMarked(fSettings.recordNode.Length() == 0);
+	fRecordFromMenu->AddItem(item);
+	bool listed = fSettings.recordNode.Length() == 0;
+	const auto sources = Recorder::Sources();
+	if (!sources.empty())
+		fRecordFromMenu->AddSeparatorItem();
+	for (const auto& source : sources) {
+		message = new BMessage(kMsgRecordFrom);
+		message->AddString("node", source.first);
+		message->AddString("output", source.second);
+		BString label(source.first);
+		label << ": " << source.second;
+		item = new BMenuItem(label, message);
+		const bool chosen = source.first == fSettings.recordNode
+			&& source.second == fSettings.recordOutput;
+		item->SetMarked(chosen);
+		listed |= chosen;
+		fRecordFromMenu->AddItem(item);
+	}
+	if (!listed) {
+		message = new BMessage(kMsgRecordFrom);
+		message->AddString("node", fSettings.recordNode);
+		message->AddString("output", fSettings.recordOutput);
+		BString label(RecordSourceName());
+		label << " " << B_TRANSLATE("(not available)");
+		item = new BMenuItem(label, message);
+		item->SetMarked(true);
+		fRecordFromMenu->AddItem(item);
+	}
+	fRecordFromMenu->SetTargetForItems(this);
+	fRecordFromMenu->SetEnabled(Recorder::Available() && !fRecord.recording);
+}
+
 void
 MainWindow::StartRecording()
 {
@@ -383,6 +443,20 @@ MainWindow::StartRecording()
 		fEngine->Unlock();
 	}
 	status_t status = fRecorder.Start();
+	const bool fromProgram = fSettings.recordNode.Length() > 0;
+	if (status == B_BUSY && fromProgram) {
+		BString text(B_TRANSLATE("PowerMix couldn't record: %source% is connected to "
+			"something else (Cortex shows what)."));
+		text.ReplaceFirst("%source%", RecordSourceName());
+		ShowError(text.String());
+		return;
+	}
+	if (status == B_NAME_NOT_FOUND && fromProgram) {
+		BString text(B_TRANSLATE("PowerMix couldn't record: %node% isn't running."));
+		text.ReplaceFirst("%node%", fSettings.recordNode.String());
+		ShowError(text.String());
+		return;
+	}
 	if (status == B_BUSY) {
 		ShowError(B_TRANSLATE("PowerMix couldn't record: another program is using the "
 			"audio input."));
@@ -1097,6 +1171,24 @@ MainWindow::RunScript(const char* script)
 			fSettings.inputLatency = atoi(rest.String());
 			printf("latency output=%.1fms extra=%dms\n", fEngine->OutputDelay() * 1000,
 				int(fSettings.inputLatency));
+		} else if (verb == "sources") {
+			// sources: what Tracks > Record from offers besides the input
+			const auto sources = Recorder::Sources();
+			for (const auto& source : sources)
+				printf("source %s: %s\n", source.first.String(), source.second.String());
+			printf("sources %zu\n", sources.size());
+		} else if (verb == "recordfrom") {
+			// recordfrom [NODE[:OUTPUT]]: where takes come from; none: the input
+			BString node(rest), output;
+			const int32 colon = node.FindFirst(':');
+			if (colon >= 0) {
+				node.CopyInto(output, colon + 1, node.Length() - colon - 1);
+				node.Truncate(colon);
+			}
+			fSettings.recordNode = node;
+			fSettings.recordOutput = output;
+			fRecorder.SetSource(node.String(), output.String());
+			printf("recordfrom %s\n", RecordSourceName().String());
 		} else if (verb == "arm") {
 			SetArmed(atoi(rest.String()));
 			printf("arm %d\n", fRecord.armed);
@@ -1375,6 +1467,16 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgCountIn:
 			fSettings.countIn = !fSettings.countIn;
 			break;
+		case kMsgRecordFrom:
+		{
+			BString node, output;
+			message->FindString("node", &node);
+			message->FindString("output", &output);
+			fSettings.recordNode = node;
+			fSettings.recordOutput = output;
+			fRecorder.SetSource(node.String(), output.String());
+			break;
+		}
 		case kMsgLatency:
 			(new LatencyWindow(this, fEngine->OutputDelay(), fSettings.inputLatency,
 				BMessenger(this)))->Show();

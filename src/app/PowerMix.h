@@ -71,6 +71,7 @@ enum {
 	kMsgSetLatency = 'SLtc',	// "ms": the extra input delay
 	kMsgClick = 'Clik',			// Tracks > Click while recording
 	kMsgCountIn = 'Cnti',		// Tracks > Count-in before recording
+	kMsgRecordFrom = 'RcFr',	// Tracks > Record from: the node and output names
 
 	// floor automation
 	kMsgRecordMoves = 'RcMv',	// Tracks > Record moves

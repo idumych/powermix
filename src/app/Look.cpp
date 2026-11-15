@@ -133,6 +133,8 @@ Settings::Load()
 	message.FindInt32("input latency", &inputLatency);
 	message.FindBool("click", &click);
 	message.FindBool("count-in", &countIn);
+	message.FindString("record node", &recordNode);
+	message.FindString("record output", &recordOutput);
 	if (viewMode < 0 || viewMode > 2)
 		viewMode = 1;
 	BRect frame;
@@ -154,6 +156,8 @@ Settings::Save() const
 	message.AddInt32("input latency", inputLatency);
 	message.AddBool("click", click);
 	message.AddBool("count-in", countIn);
+	message.AddString("record node", recordNode);
+	message.AddString("record output", recordOutput);
 	message.AddRect("classic frame", classicFrame);
 	message.AddRect("modern frame", modernFrame);
 	BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);

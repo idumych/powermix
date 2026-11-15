@@ -18,6 +18,7 @@ class BFilePanel;
 class InspectorView;
 class ToolbarView;
 class TrackListView;
+class BMenu;
 class BMenuItem;
 class BMessageRunner;
 class MixerView;
@@ -66,6 +67,8 @@ private:
 	// Tracks ▸ Record: a take from the play position into the armed track
 	// (or a new one); it stops by itself where the loop starts over
 	void StartRecording();
+	BString RecordSourceName() const;
+	void UpdateRecordFromMenu();
 	void StopRecording();
 	void SetArmed(int track);
 
@@ -117,6 +120,7 @@ private:
 	BMenuItem* fArmItem;
 	BMenuItem* fClickItem;
 	BMenuItem* fCountInItem;
+	BMenu* fRecordFromMenu;
 	BMenuItem* fMovesItem;
 	BMenuItem* fClearMovesItem;
 	float fCountInSeconds;		// of the take being recorded

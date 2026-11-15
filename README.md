@@ -48,7 +48,10 @@ including the sample mixes that came with BeOS 5.
   armed the take gets a track of its own. It stops by itself where the loop
   starts over. A click sounds on the ruler's beats while you record, after
   a one-bar count-in (both can be turned off in the Tracks menu), and
-  Misc ▸ Recording latency… lines takes up with what you heard. Not on Haiku arm64, which has no Media Kit yet.
+  Misc ▸ Recording latency… lines takes up with what you heard.
+  Tracks ▸ Record from takes the sound of another program instead of the
+  audio input: any running program's free Media Kit output, such as
+  Hydrogen's "Send" (the same as wiring it in Cortex). Not on Haiku arm64, which has no Media Kit yet.
 - **Moves** (floor automation, as Ardour automates a mix): turn on Tracks ▸
   Record moves (or the inspector's button) and drag a track while the mix
   plays, in the 3D view, with the arrows or on the inspector's floor plan.

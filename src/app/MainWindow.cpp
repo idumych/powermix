@@ -193,6 +193,8 @@ MainWindow::BuildMenus(BRect& menuFrame)
 		new BMessage(kMsgCountIn)));
 	// Filled when the menu opens: programs come and go
 	menu->AddItem(fRecordFromMenu = new BMenu(B_TRANSLATE("Record from")));
+	menu->AddItem(fMidiClockItem = new BMenuItem(B_TRANSLATE("Send MIDI clock with takes"),
+		new BMessage(kMsgMidiClock)));
 	menu->AddSeparatorItem();
 	menu->AddItem(fMovesItem = new BMenuItem(B_TRANSLATE("Record moves"),
 		new BMessage(kMsgRecordMoves)));
@@ -262,6 +264,8 @@ MainWindow::MenusBeginning()
 	fClearMovesItem->SetEnabled(selectedPath);
 	fCountInItem->SetMarked(fSettings.countIn);
 	UpdateRecordFromMenu();
+	fMidiClockItem->SetMarked(fSettings.midiClock);
+	fMidiClockItem->SetEnabled(MidiClock::Available());
 	fArmItem->SetMarked(armedSelected);
 	fControlsItem->SetEnabled(!fModern);
 }
@@ -487,6 +491,10 @@ MainWindow::StartRecording()
 		fEngine->StartCountIn(beats);
 		fCountInSeconds = float(beats * (beat > 0.05 ? beat : 0.5));
 	}
+	// Programs following PowerMix's MIDI clock (Hydrogen) start with the
+	// take, after the count-in, at the click's tempo
+	if (fSettings.midiClock)
+		fMidiClock.Start(system_time() + bigtime_t(fCountInSeconds * 1000000.0), 60.0 / beat);
 	fTakeStart = start;
 	fLastTime = start;
 	fRecord.recording = true;
@@ -500,6 +508,7 @@ MainWindow::StopRecording()
 	if (!fRecord.recording)
 		return;
 	std::vector<int16> samples = fRecorder.Stop();
+	fMidiClock.Stop();
 	fEngine->SetClick(false, 0, 1);
 	// what was recorded during the count-in isn't part of the take
 	const size_t countIn = std::min(samples.size(), size_t(fCountInSeconds * pmx::kSampleRate));
@@ -1171,6 +1180,17 @@ MainWindow::RunScript(const char* script)
 			fSettings.inputLatency = atoi(rest.String());
 			printf("latency output=%.1fms extra=%dms\n", fEngine->OutputDelay() * 1000,
 				int(fSettings.inputLatency));
+		} else if (verb == "ticks") {
+			// ticks N: the "Ticks" field (the click's tempo is N/2 BPM)
+			if (fEngine->Lock()) {
+				fEngine->Project().ticks = float(atof(rest.String()));
+				fEngine->Unlock();
+			}
+			printf("ticks %s\n", rest.String());
+		} else if (verb == "midiclock") {
+			// midiclock on|off: Tracks > Send MIDI clock with takes
+			fSettings.midiClock = rest == "on";
+			printf("midiclock %s\n", fSettings.midiClock ? "on" : "off");
 		} else if (verb == "sources") {
 			// sources: what Tracks > Record from offers besides the input
 			const auto sources = Recorder::Sources();
@@ -1466,6 +1486,9 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgCountIn:
 			fSettings.countIn = !fSettings.countIn;
+			break;
+		case kMsgMidiClock:
+			fSettings.midiClock = !fSettings.midiClock;
 			break;
 		case kMsgRecordFrom:
 		{

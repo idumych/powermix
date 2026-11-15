@@ -72,6 +72,7 @@ enum {
 	kMsgClick = 'Clik',			// Tracks > Click while recording
 	kMsgCountIn = 'Cnti',		// Tracks > Count-in before recording
 	kMsgRecordFrom = 'RcFr',	// Tracks > Record from: the node and output names
+	kMsgMidiClock = 'MClk',		// Tracks > Send MIDI clock with takes
 
 	// floor automation
 	kMsgRecordMoves = 'RcMv',	// Tracks > Record moves

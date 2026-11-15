@@ -51,7 +51,13 @@ including the sample mixes that came with BeOS 5.
   Misc ▸ Recording latency… lines takes up with what you heard.
   Tracks ▸ Record from takes the sound of another program instead of the
   audio input: any running program's free Media Kit output, such as
-  Hydrogen's "Send" (the same as wiring it in Cortex). Not on Haiku arm64, which has no Media Kit yet.
+  Hydrogen's "Send" (the same as wiring it in Cortex).
+  With Tracks ▸ Send MIDI clock with takes (on by default, Haiku only),
+  each take sends MIDI Start when it begins (after the count-in), clock at
+  the click's tempo while it records, and Stop at its end, from the Midi
+  Kit output "PowerMix output". Point Hydrogen's MIDI input at it (with
+  MIDI clock and transport input on) and the drums play along with every
+  take, from their beginning. Not on Haiku arm64, which has no Media Kit yet.
 - **Moves** (floor automation, as Ardour automates a mix): turn on Tracks ▸
   Record moves (or the inspector's button) and drag a track while the mix
   plays, in the 3D view, with the arrows or on the inspector's floor plan.

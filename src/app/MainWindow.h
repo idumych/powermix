@@ -11,6 +11,7 @@
 
 #include "Look.h"
 #include "ModernViews.h"
+#include "MidiClock.h"
 #include "Recorder.h"
 
 class AudioEngine;
@@ -113,6 +114,7 @@ private:
 	BView* fStageFrame;
 	BView* fTimelineFrame;
 	Recorder fRecorder;
+	MidiClock fMidiClock;
 	RecordState fRecord;
 	float fTakeStart;			// where the take began, seconds
 	double fLastTime;			// the mix's time at the last frame
@@ -121,6 +123,7 @@ private:
 	BMenuItem* fClickItem;
 	BMenuItem* fCountInItem;
 	BMenu* fRecordFromMenu;
+	BMenuItem* fMidiClockItem;
 	BMenuItem* fMovesItem;
 	BMenuItem* fClearMovesItem;
 	float fCountInSeconds;		// of the take being recorded

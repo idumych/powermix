@@ -50,7 +50,9 @@ ifneq ($(HAIKU_CROSS),)
   RESOURCES     = rc -o obj/$(NAME).rsrc $(RDEF) && xres -o $@ obj/$(NAME).rsrc
 else ifeq ($(UNAME),Haiku)
   PLATFORM     := Haiku
-  LIBS         := -lbe -ltracker -ltranslation -lnetwork $(APP_LIBS)
+  # MIDI clock to other programs (Hydrogen) through the Midi Kit
+  override CXXFLAGS += -DPOWERMIX_HAVE_MIDI_KIT
+  LIBS         := -lbe -ltracker -ltranslation -lnetwork -lmidi2 $(APP_LIBS)
   INSTALL_DIR  := $(shell finddir B_USER_NONPACKAGED_DIRECTORY)/apps
   RESOURCES     = rc -o obj/$(NAME).rsrc $(RDEF) && xres -o $@ obj/$(NAME).rsrc
 else ifneq ($(wildcard $(COSMOE_ROOT)/include/os/app/Application.h),)

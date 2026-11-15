@@ -50,6 +50,7 @@ struct Settings {
 	int32 inputLatency = 0;	// ms, added to the measured output delay
 	bool click = true;		// Tracks > Click while recording
 	bool countIn = true;	// Tracks > Count-in before recording
+	bool midiClock = true;	// Tracks > Send MIDI clock with takes
 	// Tracks > Record from: a producer node and its output, e.g.
 	// "Hydrogen" / "Send"; empty for the default audio input
 	BString recordNode;

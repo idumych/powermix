@@ -133,6 +133,7 @@ Settings::Load()
 	message.FindInt32("input latency", &inputLatency);
 	message.FindBool("click", &click);
 	message.FindBool("count-in", &countIn);
+	message.FindBool("midi clock", &midiClock);
 	message.FindString("record node", &recordNode);
 	message.FindString("record output", &recordOutput);
 	if (viewMode < 0 || viewMode > 2)
@@ -156,6 +157,7 @@ Settings::Save() const
 	message.AddInt32("input latency", inputLatency);
 	message.AddBool("click", click);
 	message.AddBool("count-in", countIn);
+	message.AddBool("midi clock", midiClock);
 	message.AddString("record node", recordNode);
 	message.AddString("record output", recordOutput);
 	message.AddRect("classic frame", classicFrame);

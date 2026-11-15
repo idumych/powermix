@@ -46,8 +46,10 @@ public:
 	bool CountingIn() const { return fCountIn > 0; }
 
 	// How long after the mix computes a moment you hear it, in seconds: the
-	// output's latency and one buffer (0 without an audio output)
-	double OutputDelay() const;
+	// output's latency and one buffer (0 without an audio output). Measured
+	// when the output starts: asking BSoundPlayer::Latency() with the lock
+	// held waited on the player's thread, which waits on the lock to mix.
+	double OutputDelay() const { return fOutputDelay; }
 
 	// Levels of the last block for the meters, read without the lock
 	float LeftLevel() const { return fLeftLevel; }
@@ -71,6 +73,7 @@ private:
 	bool fPaused;
 	pmx::AboutSound* fAbout;
 	float fLeftLevel, fRightLevel;
+	double fOutputDelay;
 
 	bool fClickOn;
 	double fBeat;				// seconds

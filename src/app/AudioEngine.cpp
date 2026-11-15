@@ -23,6 +23,7 @@ AudioEngine::AudioEngine()
 	fAbout(NULL),
 	fLeftLevel(0),
 	fRightLevel(0),
+	fOutputDelay(0),
 	fClickOn(false),
 	fBeat(0.5),
 	fBeatsPerBar(4),
@@ -99,6 +100,16 @@ AudioEngine::Start()
 	}
 	fPlayer->Start();
 	fPlayer->SetHasData(true);
+	// Latency() asks the media roster, which waits on the player's thread;
+	// here nothing holds the lock that thread mixes under. A query that
+	// timed out there left its late reply behind and garbled every later
+	// roster call in PowerMix (recording, Record from).
+	const media_raw_audio_format& actual = fPlayer->Format();
+	const size_t frameSize = std::max<size_t>(1, (actual.format & 0xf)
+		* std::max<uint32>(1, actual.channel_count));
+	const double buffer = actual.frame_rate > 0
+		? double(actual.buffer_size / frameSize) / actual.frame_rate : 0;
+	fOutputDelay = fPlayer->Latency() / 1e6 + buffer;
 	return B_OK;
 #endif
 }
@@ -157,22 +168,6 @@ AudioEngine::AddClicks(double from, bool countIn)
 	(void)countIn;
 }
 
-double
-AudioEngine::OutputDelay() const
-{
-#ifdef POWERMIX_NO_MEDIA_KIT
-	return 0;
-#else
-	if (fPlayer == NULL)
-		return 0;
-	const media_raw_audio_format& format = fPlayer->Format();
-	const size_t frameSize = std::max<size_t>(1, (format.format & 0xf)
-		* std::max<uint32>(1, format.channel_count));
-	const double buffer = format.frame_rate > 0
-		? double(format.buffer_size / frameSize) / format.frame_rate : 0;
-	return fPlayer->Latency() / 1e6 + buffer;
-#endif
-}
 
 void
 AudioEngine::Stop()

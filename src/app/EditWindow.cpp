@@ -335,7 +335,7 @@ EditWindow::EditWindow(AudioEngine* engine, size_t track, size_t clip, BMessenge
 		const pmx::Project& project = fEngine->Project();
 		if (track < project.tracks.size() && clip < project.tracks[track].clips.size()) {
 			const pmx::Clip& c = project.tracks[track].clips[clip];
-			fSound = c.samples;
+			fSound = c.Samples();
 			title = c.source.empty() ? project.tracks[track].name.c_str() : c.source.c_str();
 		}
 		fEngine->Unlock();
@@ -404,7 +404,7 @@ EditWindow::Apply()
 	if (fEngine->Lock()) {
 		pmx::Project& project = fEngine->Project();
 		if (fTrack < project.tracks.size() && fClip < project.tracks[fTrack].clips.size())
-			project.tracks[fTrack].clips[fClip].samples = fSound;
+			project.tracks[fTrack].clips[fClip].SetSamples(fSound);
 		fEngine->Unlock();
 	}
 	fView->UpdateScroll();

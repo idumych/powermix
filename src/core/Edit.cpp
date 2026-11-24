@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
 
 namespace pmx {
 
@@ -45,7 +46,7 @@ ClipLoop(const Clip& clip)
 float
 SoundLength(const Clip& clip)
 {
-	return float(clip.samples.size()) / kSampleRate;
+	return float(clip.Samples().size()) / kSampleRate;
 }
 
 // TrackObject::SetPos: moves the clip, keeping its length
@@ -145,11 +146,27 @@ Editor::Commit()
 	TrimHistory();
 }
 
+// Mute and solo aren't edits: undo keeps them on the tracks (names are
+// unique) as they are now
+static void
+KeepMixState(const std::vector<Track>& from, std::vector<Track>& to)
+{
+	for (Track& track : to) {
+		for (const Track& now : from) {
+			if (now.name == track.name) {
+				track.muted = now.muted;
+				track.soloed = now.soloed;
+			}
+		}
+	}
+}
+
 void
 Editor::Undo()
 {
 	if (fUndo.empty())
 		return;
+	KeepMixState(fProject->tracks, fUndo.back());
 	fRedo.push_back(std::move(fProject->tracks));
 	fProject->tracks = std::move(fUndo.back());
 	fUndo.pop_back();
@@ -160,6 +177,7 @@ Editor::Redo()
 {
 	if (fRedo.empty())
 		return;
+	KeepMixState(fProject->tracks, fRedo.back());
 	fUndo.push_back(std::move(fProject->tracks));
 	fProject->tracks = std::move(fRedo.back());
 	fRedo.pop_back();
@@ -172,14 +190,26 @@ Editor::Reset()
 	fRedo.clear();
 }
 
-static size_t
-TracksBytes(const std::vector<Track>& tracks)
+// What the history from step `from` on keeps alive: each sound once, and
+// none the project still plays (steps share the sounds they didn't change)
+size_t
+Editor::HistoryBytes(size_t from) const
 {
-	size_t bytes = 0;
-	for (const Track& track : tracks) {
-		bytes += sizeof(Track);
+	std::unordered_set<const void*> seen;
+	for (const Track& track : fProject->tracks) {
 		for (const Clip& clip : track.clips)
-			bytes += sizeof(Clip) + clip.samples.size() * sizeof(int16_t);
+			seen.insert(clip.sound.get());
+	}
+	size_t bytes = 0;
+	for (size_t step = from; step < fUndo.size(); step++) {
+		for (const Track& track : fUndo[step]) {
+			bytes += sizeof(Track);
+			for (const Clip& clip : track.clips) {
+				bytes += sizeof(Clip);
+				if (seen.insert(clip.sound.get()).second)
+					bytes += clip.Samples().size() * sizeof(int16_t);
+			}
+		}
 	}
 	return bytes;
 }
@@ -189,12 +219,9 @@ TracksBytes(const std::vector<Track>& tracks)
 void
 Editor::TrimHistory()
 {
-	size_t total = 0;
-	for (const std::vector<Track>& step : fUndo)
-		total += TracksBytes(step);
 	size_t drop = 0;
-	while (total > kHistoryBytes && fUndo.size() - drop > 1)
-		total -= TracksBytes(fUndo[drop++]);
+	while (fUndo.size() - drop > 1 && HistoryBytes(drop) > kHistoryBytes)
+		drop++;
 	fUndo.erase(fUndo.begin(), fUndo.begin() + long(drop));
 }
 
@@ -339,8 +366,8 @@ MakeClip(const std::string& source, std::vector<int16_t> samples)
 {
 	Clip clip;
 	clip.source = source;
-	clip.samples = std::move(samples);
-	float length = std::max(0.01f, float(clip.samples.size()) / kSampleRate);
+	float length = std::max(0.01f, float(samples.size()) / kSampleRate);
+	clip.SetSamples(std::move(samples));
 	clip.start = 0;
 	clip.end = length;
 	clip.loopIn = 0;
@@ -375,7 +402,7 @@ ToClipSamples(const float* interleaved, size_t frames, int channels, double rate
 std::string
 UniqueTrackName(const Project& project, const std::string& base)
 {
-	std::string stem = base.empty() ? "untitled" : base;
+	std::string stem = base.empty() || base == "." || base == ".." ? "untitled" : base;
 	for (char& c : stem) {
 		if (c == '/')
 			c = '-';

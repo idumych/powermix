@@ -650,7 +650,8 @@ public:
 		hi = 1;
 		if (time < 0)
 			return;
-		const int count = int(c.samples.size());
+		const std::vector<int16>& samples = c.Samples();
+		const int count = int(samples.size());
 		int at = int(time * pmx::kSampleRate);
 		if (count < at)
 			return;
@@ -666,7 +667,7 @@ public:
 			at += step;
 			if (at < 0 || at >= count)
 				break;
-			int16 s = c.samples[size_t(at)];
+			int16 s = samples[size_t(at)];
 			if (hi < s)
 				hi = s;
 			if (s < lo)
@@ -967,9 +968,9 @@ public:
 				}
 				// the sound hasn't changed during the drag, only the timing
 				double factor = pmx::ClipLength(clip) / std::max(0.01f, pmx::SoundLength(clip));
-				clip.samples = (keys & B_SHIFT_KEY) != 0
-					? pmx::Resample(clip.samples, factor)
-					: pmx::TimeStretch(clip.samples, factor);
+				clip.SetSamples((keys & B_SHIFT_KEY) != 0
+					? pmx::Resample(clip.Samples(), factor)
+					: pmx::TimeStretch(clip.Samples(), factor));
 				clip.loopIn = 0;
 				clip.loopOut = pmx::SoundLength(clip);
 				pmx::SetClipLength(clip, pmx::SoundLength(clip), 0);

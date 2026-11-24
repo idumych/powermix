@@ -6,15 +6,7 @@
 
 namespace pmx {
 
-namespace {
-
-// 3dmiX converts with C casts (gcc2: fistp with the FPU set to truncate),
-// although decompilers show them as ROUND(): truncate toward zero.
-int32_t Trunc(float f) { return int32_t(f); }
-
-}	// namespace
-
-Mixer::Mixer(const Project* project)
+Mixer::Mixer(Project* project)
 	:
 	fProject(project),
 	fMaster(MasterGainForSlider(50)),
@@ -34,10 +26,6 @@ void
 Mixer::Reset()
 {
 	std::vector<Channel> channels(fProject->tracks.size());
-	for (size_t i = 0; i < channels.size() && i < fChannels.size(); i++) {
-		channels[i].muted = fChannels[i].muted;
-		channels[i].soloed = fChannels[i].soloed;
-	}
 	for (Channel& channel : channels)
 		channel.window.assign(kHistoryFrames + kWindowBlocks * kBlockFrames, 0);
 	fChannels.swap(channels);
@@ -48,27 +36,27 @@ Mixer::Reset()
 void
 Mixer::SetMuted(size_t track, bool muted)
 {
-	if (track < fChannels.size())
-		fChannels[track].muted = muted;
+	if (track < fProject->tracks.size())
+		fProject->tracks[track].muted = muted;
 }
 
 void
 Mixer::SetSoloed(size_t track, bool soloed)
 {
-	if (track < fChannels.size())
-		fChannels[track].soloed = soloed;
+	if (track < fProject->tracks.size())
+		fProject->tracks[track].soloed = soloed;
 }
 
 bool
 Mixer::IsMuted(size_t track) const
 {
-	return track < fChannels.size() && fChannels[track].muted;
+	return track < fProject->tracks.size() && fProject->tracks[track].muted;
 }
 
 bool
 Mixer::IsSoloed(size_t track) const
 {
-	return track < fChannels.size() && fChannels[track].soloed;
+	return track < fProject->tracks.size() && fProject->tracks[track].soloed;
 }
 
 void
@@ -138,14 +126,14 @@ void
 Mixer::MixBlock(int32_t block, int16_t* out)
 {
 	const size_t count = fChannels.size();
+	const std::vector<Track>& tracks = fProject->tracks;
 	bool anySolo = false;
-	for (const Channel& channel : fChannels)
-		anySolo |= channel.soloed;
+	for (size_t i = 0; i < count; i++)
+		anySolo |= tracks[i].soloed;
 
 	std::vector<size_t> active;
 	for (size_t i = 0; i < count; i++) {
-		const Channel& channel = fChannels[i];
-		if (!channel.muted && !(anySolo && !channel.soloed) && channel.playing)
+		if (!tracks[i].muted && !(anySolo && !tracks[i].soloed) && fChannels[i].playing)
 			active.push_back(i);
 	}
 
@@ -227,6 +215,10 @@ Mixer::NextBlock(int16_t* out)
 		fLeftLevel = fRightLevel = 0;
 		return !fDone;
 	}
+	// tracks were added or removed since the last block (the caller's
+	// Reset() may come after it let go of the lock): never index past them
+	if (fChannels.size() != fProject->tracks.size())
+		Reset();
 	if (fBlock < 0) {
 		FillWindows();
 		fBlock = 0;

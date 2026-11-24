@@ -893,15 +893,10 @@ MainWindow::SaveMix(const char* path)
 {
 	if (!fEngine->Lock())
 		return B_ERROR;
-	pmx::Project project = fEngine->Project();
-	pmx::Mixer live = fEngine->Mixer();
+	pmx::Project project = fEngine->Project();	// with mute and solo
 	fEngine->Unlock();
 
 	pmx::Mixer mixer(&project);
-	for (size_t i = 0; i < project.tracks.size(); i++) {
-		mixer.SetMuted(i, live.IsMuted(i));
-		mixer.SetSoloed(i, live.IsSoloed(i));
-	}
 	mixer.SetMasterGain(pmx::MasterGainForSlider(fMasterValue));
 	mixer.SetRange(project.selectionStart, project.selectionEnd);
 	mixer.Seek(project.selectionStart);
@@ -1233,7 +1228,7 @@ MainWindow::RunScript(const char* script)
 					length = pmx::ClipLength(c);
 					start = c.start;
 					peak = 0;
-					for (int16 v : c.samples)
+					for (int16 v : c.Samples())
 						peak = std::max(peak, abs(int(v)));
 				}
 				printf("record track=%zu name=%s clips=%zu take-start=%.2f take-length=%.2f "
@@ -1340,6 +1335,28 @@ MainWindow::MessageReceived(BMessage* message)
 			if (message->FindRef("directory", &directory) == B_OK
 				&& message->FindString("name", &name) == B_OK) {
 				BPath path(&directory);
+				// track files are named after their tracks: in another
+				// folder they may belong to another project
+				BString replaced;
+				if (fProjectFolder != path.Path() && fEngine->Lock()) {
+					for (const pmx::Track& track : fEngine->Project().tracks) {
+						BEntry entry(BPath(path.Path(), track.name.c_str()).Path());
+						if (entry.Exists())
+							replaced << (replaced.Length() > 0 ? ", " : "") << track.name.c_str();
+					}
+					fEngine->Unlock();
+				}
+				if (replaced.Length() > 0) {
+					BString text;
+					text.SetToFormat(B_TRANSLATE("That folder already has track files named %s. "
+						"Saving replaces them, and other projects there may use them."),
+						replaced.String());
+					BAlert* alert = new BAlert("PowerMix", text.String(), B_TRANSLATE("Cancel"),
+						B_TRANSLATE("Replace"), NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+					alert->SetShortcut(0, B_ESCAPE);
+					if (alert->Go() != 1)
+						break;
+				}
 				SaveProject(path.Path(), name);
 			}
 			break;

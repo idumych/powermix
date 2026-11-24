@@ -59,7 +59,7 @@ private:
 	static void PlayBuffer(void* cookie, void* buffer, size_t size,
 		const media_raw_audio_format& format);
 	void Fill(int16* out, size_t frames);
-	void AddClicks(double from, bool countIn);
+	void AddClicks(double from);
 	static status_t SilentClock(void* cookie);
 
 	BLocker fLock;

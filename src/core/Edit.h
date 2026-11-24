@@ -65,9 +65,9 @@ public:
 	explicit Editor(Project* project);
 
 	// Call before every change; Undo() returns to that state. The history
-	// has no set length (Ardour's is unlimited too), but it holds every
-	// step's tracks with their sounds, so the oldest steps are dropped once
-	// it passes kHistoryBytes. 3dmiX had one level, and undoing twice redid.
+	// has no set length (Ardour's is unlimited too), but it holds the sounds
+	// a step changed, so the oldest steps are dropped once those pass
+	// kHistoryBytes. 3dmiX had one level, and undoing twice redid.
 	static constexpr size_t kHistoryBytes = 256u << 20;
 	void Commit();
 	bool CanUndo() const { return !fUndo.empty(); }
@@ -92,6 +92,7 @@ public:
 
 private:
 	void TrimHistory();
+	size_t HistoryBytes(size_t from) const;
 
 	Project* fProject;
 	std::vector<std::vector<Track> > fUndo;

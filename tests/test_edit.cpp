@@ -18,7 +18,7 @@ static Clip MakeClip(float start, float end, float loop)
 	c.end = end;
 	c.loopIn = 0;
 	c.loopOut = loop;
-	c.samples.assign(size_t(loop * kSampleRate) + 10, 1);
+	c.SetSamples(std::vector<int16_t>(size_t(loop * kSampleRate) + 10, 1));
 	return c;
 }
 
@@ -125,14 +125,26 @@ int main()
 		CHECK(h.tracks.empty());
 		history.Reset();
 		CHECK(!history.CanRedo());
-		// a long history of big sounds keeps under the limit
+		// steps share the sounds they didn't change, so edits of a big
+		// sound's timing all stay...
 		Track big;
 		big.clips.push_back(MakeClip(0, 1, 1));
-		big.clips[0].samples.assign(20u << 20, 0);	// 40 MB
+		big.clips[0].SetSamples(std::vector<int16_t>(20u << 20, 0));	// 40 MB
 		h.tracks.push_back(big);
 		for (int i = 0; i < 12; i++)
 			history.Commit();
+		CHECK(history.UndoSteps() == 12);
+		// ...and a long history of changed sounds keeps under the limit
+		history.Reset();
+		for (int i = 0; i < 12; i++) {
+			history.Commit();
+			h.tracks[0].clips[0].SetSamples(std::vector<int16_t>(20u << 20, int16_t(i)));
+		}
 		CHECK(history.UndoSteps() >= 5 && history.UndoSteps() <= 7);
+		// mute isn't an edit: undo leaves it as it is
+		h.tracks[0].muted = true;
+		history.Undo();
+		CHECK(h.tracks[0].muted);
 	}
 
 	// floor automation: writing replaces the stretch moved through

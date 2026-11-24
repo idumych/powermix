@@ -27,6 +27,7 @@
 #define POWERMIX_PROJECT_H
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,10 @@ namespace pmx {
 
 const int kSampleRate = 44100;
 const float kPositionLimit = 256.0f;	// x and y are clamped to +-256
+
+// 3dmiX converts with C casts (gcc2: fistp with the FPU set to truncate),
+// although decompilers show them as ROUND(): truncate toward zero.
+inline int32_t Trunc(float f) { return int32_t(f); }
 
 // A sample placed on a track: it repeats [loopIn, loopOut) of its samples
 // from start to end (seconds on the project's timeline).
@@ -44,7 +49,15 @@ struct Clip {
 	// PowerMix's fades (Ardour's region fades): seconds from each end over
 	// which the clip rises from or falls to silence; 0 plays it as 3dmiX did
 	float fadeIn = 0, fadeOut = 0;
-	std::vector<int16_t> samples;
+	// The sound, shared between copies (undo steps, the clipboard, a saved
+	// mix's snapshot): replace it with SetSamples, never change it in place
+	std::shared_ptr<const std::vector<int16_t> > sound
+		= std::make_shared<const std::vector<int16_t> >();
+	const std::vector<int16_t>& Samples() const { return *sound; }
+	void SetSamples(std::vector<int16_t> samples)
+	{
+		sound = std::make_shared<const std::vector<int16_t> >(std::move(samples));
+	}
 
 	// SimpleObject::GetData: writes count frames starting `offset` frames
 	// after the clip's start into out. Frames past the end of the sound are
@@ -69,6 +82,7 @@ struct Track {
 	std::vector<PathPoint> path;
 	void PositionAt(double time, float& px, float& py) const;
 	bool addedByHand = false;	// runtime only: its 3D level bar is blue
+	bool muted = false, soloed = false;	// runtime only (Mixer::SetMuted)
 	std::vector<Clip> clips;
 
 	// TrackViewer::fill_buffer: count frames starting at frame `at` of the

@@ -33,7 +33,7 @@ int main(int argc, char** argv)
 			drums, nullptr)) {
 		std::vector<int16_t> mine = ToClipSamples(sound.samples.data(), sound.Frames(),
 			sound.channels, sound.rate);
-		const std::vector<int16_t>& theirs = drums.clips[0].samples;
+		const std::vector<int16_t>& theirs = drums.clips[0].Samples();
 		// BeOS's decoder started 4 samples later than the standard one
 		const size_t lag = 4;
 		double xy = 0, xx = 0, yy = 0;

@@ -1,5 +1,6 @@
 // Project.cpp: reading, writing and playing back 3dmiX projects.
 #include "Project.h"
+#include "Edit.h"
 
 #include <cmath>
 #include <cstdio>
@@ -15,11 +16,24 @@ namespace pmx {
 
 namespace {
 
+// Writing goes to "<path>.tmp", which replaces path only once every byte
+// is written, so a failed save leaves the old file as it was
 class File {
 public:
 	File(const std::string& path, const char* mode)
-		: fFile(fopen(path.c_str(), mode)) {}
-	~File() { if (fFile) fclose(fFile); }
+		:
+		fPath(path),
+		fWriting(mode[0] == 'w'),
+		fFile(fopen(fWriting ? (path + ".tmp").c_str() : path.c_str(), mode))
+	{
+	}
+	~File()
+	{
+		if (fFile)
+			fclose(fFile);
+		if (fWriting && fFile)
+			remove((fPath + ".tmp").c_str());	// never closed: abandoned
+	}
 	bool IsOpen() const { return fFile != nullptr; }
 	bool Ok() const { return fOk; }
 
@@ -87,17 +101,22 @@ public:
 	{
 		if (fFile && fclose(fFile) != 0)
 			fOk = false;
+		if (fFile && fWriting) {
+			const std::string temporary = fPath + ".tmp";
+			if (!fOk || rename(temporary.c_str(), fPath.c_str()) != 0) {
+				fOk = false;
+				remove(temporary.c_str());
+			}
+		}
 		fFile = nullptr;
 	}
 
 private:
+	std::string fPath;
+	bool fWriting;
 	FILE* fFile;
 	bool fOk = true;
 };
-
-// 3dmiX converts with C casts (gcc2: fistp with the FPU set to truncate),
-// although decompilers show them as ROUND(): truncate toward zero.
-int32_t Trunc(float f) { return int32_t(f); }
 
 std::string Leaf(const std::string& path)
 {
@@ -132,6 +151,7 @@ Clip::GetData(int16_t* out, int32_t offset, int32_t count) const
 	const long double rate = kSampleRate;
 	const int32_t loopStart = int32_t((long double)loopIn * rate);
 	const int32_t loopLength = std::max(0, int32_t((long double)loopOut * rate) - loopStart);
+	const std::vector<int16_t>& samples = Samples();
 	const int32_t available = int32_t(samples.size()) - loopStart;
 	if (loopLength == 0)
 		return false;	// the original divides by zero here
@@ -301,9 +321,10 @@ ReadTrack(const std::string& path, Track& track, std::string* error)
 		}
 		std::vector<uint8_t> raw(size_t(frames) * 2);
 		file.Read(raw.data(), raw.size());
-		clip.samples.resize(frames);
+		std::vector<int16_t> samples(frames);
 		for (uint32_t f = 0; f < frames; f++)
-			clip.samples[f] = int16_t(raw[2 * f] << 8 | raw[2 * f + 1]);
+			samples[f] = int16_t(raw[2 * f] << 8 | raw[2 * f + 1]);
+		clip.SetSamples(std::move(samples));
 		track.clips.push_back(std::move(clip));
 	}
 	if (!file.Ok()) {
@@ -332,11 +353,12 @@ WriteTrack(const std::string& path, const Track& track, std::string* error)
 		file.WriteFloat(clip.end);
 		file.WriteFloat(clip.loopIn);
 		file.WriteFloat(clip.loopOut);
-		file.Write32(uint32_t(clip.samples.size()));
-		std::vector<uint8_t> raw(clip.samples.size() * 2);
-		for (size_t f = 0; f < clip.samples.size(); f++) {
-			raw[2 * f] = uint8_t(uint16_t(clip.samples[f]) >> 8);
-			raw[2 * f + 1] = uint8_t(clip.samples[f]);
+		const std::vector<int16_t>& samples = clip.Samples();
+		file.Write32(uint32_t(samples.size()));
+		std::vector<uint8_t> raw(samples.size() * 2);
+		for (size_t f = 0; f < samples.size(); f++) {
+			raw[2 * f] = uint8_t(uint16_t(samples[f]) >> 8);
+			raw[2 * f + 1] = uint8_t(samples[f]);
 		}
 		file.Write(raw.data(), raw.size());
 	}
@@ -436,6 +458,9 @@ ReadProject(const std::string& givenPath, Project& project, std::string* error,
 				skipped->push_back(Leaf(stored));
 			continue;
 		}
+		// the name inside the file is where Save writes it: no "/", no
+		// "..", and no two tracks in one file
+		track.name = UniqueTrackName(project, track.name);
 		track.x = x;
 		track.y = y;
 		project.tracks.push_back(std::move(track));
@@ -575,11 +600,13 @@ WriteExtras(const std::string& path, const Project& project)
 		remove(path.c_str());
 		return true;
 	}
-	FILE* file = fopen(path.c_str(), "w");
-	if (file == NULL)
+	text = "PowerMix 1\n" + text;
+	File file(path, "wb");
+	if (!file.IsOpen())
 		return false;
-	bool ok = fputs("PowerMix 1\n", file) >= 0 && fputs(text.c_str(), file) >= 0;
-	return fclose(file) == 0 && ok;
+	file.Write(text.data(), text.size());
+	file.Close();
+	return file.Ok();
 }
 
 }	// namespace pmx

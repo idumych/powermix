@@ -23,15 +23,16 @@ static Project ClickProject(float x, float y)
 	clip.start = 1.0f;
 	clip.end = 1.5f;
 	clip.loopOut = 0.5f;
-	clip.samples.assign(kSampleRate / 2, 0);
-	clip.samples[0] = 10000;
+	std::vector<int16_t> samples(kSampleRate / 2, 0);
+	samples[0] = 10000;
+	clip.SetSamples(samples);
 	track.clips.push_back(clip);
 	project.tracks.push_back(track);
 	return project;
 }
 
 // Plays two seconds and returns the frame and value of each channel's peak
-static void Peaks(const Project& project, int& leftAt, int& rightAt, int& left, int& right)
+static void Peaks(Project project, int& leftAt, int& rightAt, int& left, int& right)
 {
 	Mixer mixer(&project);
 	mixer.SetMasterGain(1.0f);
@@ -117,6 +118,26 @@ static void TestMuteSolo()
 	CHECK(peak == 0);
 }
 
+// Deleting a track as the app does: the mute stays on its own track, and a
+// block mixed before the caller's Reset() doesn't read past the tracks
+static void TestDeleteTrack()
+{
+	Project project = ClickProject(0, 256);
+	project.tracks.push_back(project.tracks[0]);
+	project.tracks.push_back(project.tracks[0]);
+	Mixer mixer(&project);
+	mixer.SetRange(0, 2.0);
+	mixer.SetMuted(0, true);
+	int16_t block[2 * kBlockFrames];
+	mixer.NextBlock(block);
+	project.tracks.erase(project.tracks.begin());
+	project.tracks.pop_back();
+	for (int b = 0; b < 180; b++)
+		mixer.NextBlock(block);					// no Reset(): must not crash
+	CHECK(!mixer.IsMuted(0));
+	CHECK(mixer.TrackLevel(1) == 0);			// one channel left
+}
+
 static void WriteWav(const char* path, const std::vector<int16_t>& frames)
 {
 	FILE* f = fopen(path, "wb");
@@ -167,6 +188,7 @@ int main(int argc, char** argv)
 	TestPlacement();
 	TestPath();
 	TestMuteSolo();
+	TestDeleteTrack();
 	RenderLynx(argc > 1 ? argv[1] : "vm/orig/boot/optional/sound/3D Mixes");
 	printf(sFailures ? "%d FAILED\n" : "all passed\n", sFailures);
 	return sFailures ? 1 : 0;

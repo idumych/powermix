@@ -32,7 +32,7 @@ static void TestClipLoop()
 	// a 4-frame loop (4 / 44100 itself is 3.99999 as a float, which
 	// truncates to 3 frames as in 3dmiX)
 	clip.loopOut = 4.5f / kSampleRate;
-	clip.samples = {1, 2, 3, 4, 5, 6};
+	clip.SetSamples({1, 2, 3, 4, 5, 6});
 	int16_t out[10] = {};
 	CHECK(clip.GetData(out, 2, 10));
 	const int16_t want[10] = {3, 4, 1, 2, 3, 4, 1, 2, 3, 4};
@@ -59,7 +59,7 @@ static void TestFades()
 	clip.end = 1;
 	clip.loopIn = 0;
 	clip.loopOut = 1;
-	clip.samples.assign(kSampleRate, 10000);
+	clip.SetSamples(std::vector<int16_t>(kSampleRate, 10000));
 	clip.fadeIn = 0.5f;
 	clip.fadeOut = 0.25f;
 	Track track;
@@ -101,6 +101,50 @@ static void TestFades()
 	rmdir(dir);
 }
 
+// Track names come from inside the track files, and Save writes to them:
+// on opening they're made safe and unique. A failed save leaves the old
+// files whole.
+static void TestTrackNames()
+{
+	char dir[] = "/tmp/pmx-names-XXXXXX";
+	CHECK(mkdtemp(dir) != NULL);
+	const std::string d = dir;
+	Project project;
+	Track track;
+	track.name = "a";
+	Clip clip;
+	clip.end = clip.loopOut = 0.1f;
+	clip.SetSamples(std::vector<int16_t>(4410, 1));
+	track.clips.push_back(clip);
+	project.tracks = {track, track, track};
+	project.tracks[1].name = "b";
+	project.tracks[2].name = "c";
+	std::string error;
+	CHECK(WriteProject(d, "n.3dmix", project, &error));
+	CHECK(access((d + "/a.tmp").c_str(), F_OK) != 0);	// no temporary left
+	// b claims a's name, c a path out of the folder
+	track.name = "a";
+	CHECK(WriteTrack(d + "/b", track, &error));
+	track.name = "../escaped";
+	CHECK(WriteTrack(d + "/c", track, &error));
+	Project back;
+	CHECK(ReadProject(d + "/n.3dmix", back, &error));
+	CHECK(back.tracks.size() == 3 && back.tracks[0].name == "a"
+		&& back.tracks[1].name == "a 2" && back.tracks[2].name == "..-escaped");
+	// a save that can't finish (the folder went read-only) keeps the old files
+	const std::string before = Slurp(d + "/a");
+	chmod(dir, 0555);
+	if (access(dir, W_OK) != 0) {		// root can write anyway: skip
+		back.tracks[0].clips.clear();
+		CHECK(!WriteProject(d, "n.3dmix", back, &error));
+		CHECK(Slurp(d + "/a") == before);
+	}
+	chmod(dir, 0755);
+	for (const char* f : {"a", "b", "c", "a 2", "..-escaped", "n.3dmix"})
+		remove((d + "/" + f).c_str());
+	rmdir(dir);
+}
+
 // Opening through links: a working one, one flattened into a file holding
 // its target's path (as copying through zip or FAT leaves it), a broken one,
 // and a file that's neither
@@ -115,7 +159,7 @@ static void TestLinks(const std::string& mixes)
 	track.name = "t1";
 	Clip clip;
 	clip.end = clip.loopOut = 0.1f;
-	clip.samples.assign(4410, 1);
+	clip.SetSamples(std::vector<int16_t>(4410, 1));
 	track.clips.push_back(clip);
 	project.tracks.push_back(track);
 	std::string error;
@@ -199,6 +243,7 @@ int main(int argc, char** argv)
 {
 	TestClipLoop();
 	TestFades();
+	TestTrackNames();
 	std::string dir = argc > 1 ? argv[1] : "vm/orig/boot/optional/sound/3D Mixes";
 	TestLinks(dir);
 	TestMix(dir, "the-lynx", 14);

@@ -29,12 +29,13 @@ inline float MasterGainForSlider(float value) { return (100.0f - value) / 15.0f;
 class Mixer {
 public:
 	// The project must outlive the mixer; tracks are looked up by index, so
-	// call Reset() after adding or removing tracks.
-	explicit Mixer(const Project* project);
+	// call Reset() after adding or removing tracks, under the same lock.
+	explicit Mixer(Project* project);
 
 	void Reset();
 	void SetMasterGain(float gain) { fMaster = gain; }
 	// Muted tracks (and, while any track is soloed, the others) are skipped.
+	// The flags are kept on the tracks, so they follow them.
 	void SetMuted(size_t track, bool muted);
 	void SetSoloed(size_t track, bool soloed);
 	bool IsMuted(size_t track) const;
@@ -71,7 +72,6 @@ private:
 		float smoothLeft = 0.5f, smoothRight = 0.5f;	// bi_mix's 31/32 filter
 		float gain = 0;
 		float level = 2;
-		bool muted = false, soloed = false;
 		float x = 0, y = 0;		// where the track is for this block
 	};
 
@@ -80,7 +80,7 @@ private:
 	void PlaceChannels();
 	void MixBlock(int32_t block, int16_t* out);
 
-	const Project* fProject;
+	Project* fProject;
 	std::vector<Channel> fChannels;
 	float fMaster;
 	double fStart, fEnd, fTime;

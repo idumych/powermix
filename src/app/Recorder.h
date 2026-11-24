@@ -31,11 +31,11 @@ public:
 
 	// Where takes come from: a producer node's output by name (e.g.
 	// "Hydrogen", "Send"), or the default audio input when node is empty.
-	// Haiku only; elsewhere the default input is always used.
+	// On Linux Hokku's roster shows each program playing sound as a node.
 	void SetSource(const char* node, const char* output);
 
 	// Free outputs of running producers that can be recorded, as
-	// "node\toutput" pairs (Haiku only)
+	// "node\toutput" pairs
 	static std::vector<std::pair<BString, BString>> Sources();
 
 	status_t Start();
@@ -52,7 +52,7 @@ private:
 		const media_format& format);
 	status_t Connect();
 	void Disconnect();
-#if !defined(POWERMIX_NO_MEDIA_KIT) && !defined(APP_COSMOE)
+#ifndef POWERMIX_NO_MEDIA_KIT
 	static status_t FindSource(BMediaRoster* roster, const BString& nodeName,
 		const BString& outputName, media_node& node, media_output& output);
 #endif
@@ -60,11 +60,11 @@ private:
 	BMediaRecorder* fRecorder;
 	BString fSourceNode;
 	BString fSourceOutput;
-#if !defined(POWERMIX_NO_MEDIA_KIT) && !defined(APP_COSMOE)
+#ifndef POWERMIX_NO_MEDIA_KIT
 	media_node fInput;				// the node recorded from, while held
 	bool fHoldingInput;
 #endif
-	std::mutex fLock;
+	mutable std::mutex fLock;
 	std::vector<float> fFrames;		// interleaved, as recorded
 	int fChannels;
 	float fRate;

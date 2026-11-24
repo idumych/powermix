@@ -17,7 +17,7 @@
 Recorder::Recorder()
 	:
 	fRecorder(NULL),
-#if !defined(POWERMIX_NO_MEDIA_KIT) && !defined(APP_COSMOE)
+#ifndef POWERMIX_NO_MEDIA_KIT
 	fHoldingInput(false),
 #endif
 	fChannels(1),
@@ -85,7 +85,7 @@ Recorder::SetSource(const char* node, const char* output)
 	fSourceOutput = output != NULL ? output : "";
 }
 
-#if !defined(POWERMIX_NO_MEDIA_KIT) && !defined(APP_COSMOE)
+#ifndef POWERMIX_NO_MEDIA_KIT
 // Programs killed while their nodes were registered leave entries behind
 // whose port is gone: they answer every query with an error (and a
 // "Bad port ID" line on stderr). Looking at the port skips them quietly.
@@ -179,7 +179,8 @@ Recorder::Sources()
 // BMediaRecorder::Connect(format) on Haiku hooks up to the system mixer's
 // output (what's playing), which the sound card already has: connect to a
 // free output of the default audio input instead, as SoundRecorder does,
-// in the format it gives. Hokku's Connect(format) opens the capture device.
+// in the format it gives. Hokku's roster offers the input and the programs
+// playing sound the same way.
 status_t
 Recorder::Connect()
 {
@@ -187,18 +188,6 @@ Recorder::Connect()
 	format.type = B_MEDIA_RAW_AUDIO;
 	format.u.raw_audio = media_raw_audio_format::wildcard;
 	fRecorder->SetAcceptedFormat(format);
-#ifdef APP_COSMOE
-	format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
-	format.u.raw_audio.channel_count = 1;
-	format.u.raw_audio.frame_rate = 44100;
-	status_t status = fRecorder->Connect(format);
-	if (status != B_OK) {
-		// the input couldn't give that: take what it gives
-		format.u.raw_audio = media_raw_audio_format::wildcard;
-		status = fRecorder->Connect(format);
-	}
-	return status;
-#else
 	BMediaRoster* roster = BMediaRoster::Roster();
 	if (roster == NULL)
 		return B_MEDIA_SYSTEM_FAILURE;
@@ -227,7 +216,6 @@ Recorder::Connect()
 	if (status != B_OK)
 		Disconnect();
 	return status;
-#endif
 }
 
 void
@@ -235,12 +223,10 @@ Recorder::Disconnect()
 {
 	if (fRecorder != NULL && fRecorder->IsConnected())
 		fRecorder->Disconnect();
-#ifndef APP_COSMOE
 	if (fHoldingInput) {
 		BMediaRoster::Roster()->ReleaseNode(fInput);
 		fHoldingInput = false;
 	}
-#endif
 }
 #endif
 
@@ -267,8 +253,7 @@ Recorder::Stop()
 double
 Recorder::Seconds() const
 {
-	Recorder* self = const_cast<Recorder*>(this);
-	std::lock_guard<std::mutex> guard(self->fLock);
+	std::lock_guard<std::mutex> guard(fLock);
 	return fRate > 0 ? fFrames.size() / double(std::max(1, fChannels)) / fRate : 0;
 }
 

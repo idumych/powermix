@@ -74,6 +74,11 @@ else ifneq ($(wildcard $(COSMOE_ROOT)/include/os/app/Application.h),)
   # are instantiated by looking up Class::Instantiate() in the app.
   LIBS        := -L$(COSMOE_ROOT)/lib -lbe -ltracker $(APP_LIBS) \
                  -Wl,-rpath,'$(COSMOE_RPATH)' -Wl,--export-dynamic
+  # MIDI clock through Hokku's Midi Kit 2 (the ALSA sequencer), when built
+  ifneq ($(wildcard $(COSMOE_ROOT)/lib/libmidi2.so),)
+    override CXXFLAGS += -DPOWERMIX_HAVE_MIDI_KIT -I$(COSMOE_ROOT)/include/os/midi2
+    LIBS += -lmidi2
+  endif
   INSTALL_DIR := $(HOME)/.local/bin
   # Cosmoe reads resources from a .cosmoe_rsrc section linked into the app
   EXTRA_OBJS  := obj/$(NAME).rsrc.o

@@ -59,8 +59,7 @@ including the sample mixes that came with BeOS 5.
   tempo while it records, and Stop at its end, from the MIDI output
   "PowerMix output" (on Linux an ALSA sequencer port). Point Hydrogen's
   MIDI input at it (with MIDI clock and transport input on) and the drums
-  play along with every take, from their beginning. Not in the arm64
-  package, which is built without sound for now.
+  play along with every take, from their beginning.
 - **Moves** (floor automation, as Ardour automates a mix): turn on Tracks ▸
   Record moves (or the inspector's button) and drag a track while the mix
   plays, in the 3D view, with the arrows or on the inspector's floor plan.
@@ -127,7 +126,7 @@ Not (yet) like the original:
 |---|---|---|
 | Haiku R1/beta6, Renku (x86_64) | `.hpkg` | installed and run in a Haiku R1/beta6 VM (QEMU): the release's script checks (open, export, import, modern look, fades and moves saved and reopened, undo and redo) and screenshots; recording a take from a tone fed into the VM's sound card input. Record from and MIDI clock are untested on Haiku |
 | Linux (x86_64, aarch64) | AppImage through [Hokku](https://github.com/idumych/hokku) | x86_64: run under Xvfb (X11) for the release's script checks; recording from a test file through Hokku's capture, Record from another program's stream (PulseAudio/PipeWire) and MIDI clock read with `aseqdump`; both started in CI under X11 and headless Wayland |
-| Renku OS (arm64) | `.hpkg`, without sound for now | run on Renku OS's arm64 image in emulated QEMU: the release's script checks; not on real hardware |
+| Renku OS (arm64) | `.hpkg` | run on Renku OS's arm64 image in emulated QEMU: the release's script checks, and playback and recording a take through an emulated Intel HDA card; MIDI clock and real hardware are untested |
 
 ## Building
 
